@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Capy Tower</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game"></canvas>
+  <div id="hud">
+    <div class="hud-left">
+      <span class="label">HEIGHT</span>
+      <span id="hud-height">0.0 m</span>
+    </div>
+    <div class="hud-right">
+      <div class="hud-combo" id="hud-combo"></div>
+      <span class="label">BEST <span id="hud-best">0.0 m</span></span>
+    </div>
+  </div>
+  <div id="overlay" class="overlay">
+    <h1 class="title">CAPY TOWER</h1>
+    <p class="sub">climb the tower. don't fall.</p>
+    <div class="controls">
+      <span>&larr; &rarr; / A D &mdash; move</span>
+      <span>SPACE / &uarr; / W &mdash; jump (hold to jump higher)</span>
+      <span>R &mdash; restart &middot; P &mdash; pause &middot; M &mdash; mute</span>
+    </div>
+    <button id="start-btn">START</button>
+    <p class="hint" id="overlay-hint"></p>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
