@@ -2,35 +2,109 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b3b45">
 <title>Capy Tower</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="game-wrap">
-  <canvas id="game"></canvas>
-  <div id="hud">
-    <div class="hud-left">
-      <span class="label">HEIGHT</span>
-      <span id="hud-height">0.0 m</span>
+<div id="stage">
+  <canvas id="game" width="480" height="720"></canvas>
+
+  <section class="screen" id="s-title">
+    <div class="logo"><span>CAPY</span><span>TOWER</span></div>
+    <canvas class="title-capy" id="title-capy" width="360" height="200"></canvas>
+    <div class="menu">
+      <button class="btn big" data-go="solo">Solo Climb</button>
+      <button class="btn big alt" data-go="online">Online Race <small>up to 4</small></button>
+      <button class="btn" data-go="howto">How to Play</button>
     </div>
-    <div class="hud-right">
-      <div class="hud-combo" id="hud-combo"></div>
-      <span class="label">BEST <span id="hud-best">0.0 m</span></span>
+    <div class="records" id="records"></div>
+  </section>
+
+  <section class="screen" id="s-select">
+    <h2 class="heading">Pick your capy</h2>
+    <div class="roster" id="roster"></div>
+    <div class="char-info" id="char-info"></div>
+    <div class="row">
+      <button class="btn ghost" data-back>Back</button>
+      <button class="btn big" id="select-go">Let's climb!</button>
     </div>
+    <p class="hint">← → to choose · Enter to go</p>
+  </section>
+
+  <section class="screen" id="s-online">
+    <h2 class="heading">Online Race</h2>
+    <p class="sub">Same tower, up to four capybaras. Last one standing wins.</p>
+    <label class="field">Your name
+      <input id="name" maxlength="12" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="menu">
+      <button class="btn big" id="quick">Quick Race</button>
+      <button class="btn alt" id="create">Create Private Room</button>
+      <div class="join">
+        <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+        <button class="btn alt" id="join">Join</button>
+      </div>
+    </div>
+    <p class="status" id="online-status"></p>
+    <button class="btn ghost" data-back>Back</button>
+  </section>
+
+  <section class="screen" id="s-lobby">
+    <h2 class="heading">Room <span id="room-code" class="code"></span></h2>
+    <p class="sub" id="lobby-sub">Share the code with friends</p>
+    <div class="slots" id="slots"></div>
+    <div class="row">
+      <button class="btn ghost" id="leave">Leave</button>
+      <button class="btn alt" id="change-char">Change Capy</button>
+      <button class="btn big" id="ready">Ready</button>
+    </div>
+    <p class="status" id="lobby-status"></p>
+  </section>
+
+  <section class="screen" id="s-over">
+    <h2 class="heading big-over">Game Over</h2>
+    <div class="scorecard" id="scorecard"></div>
+    <div class="row">
+      <button class="btn ghost" data-go="title">Menu</button>
+      <button class="btn alt" data-go="select">Change Capy</button>
+      <button class="btn big" id="again">Climb Again</button>
+    </div>
+    <p class="hint">Space to climb again</p>
+  </section>
+
+  <section class="screen" id="s-results">
+    <h2 class="heading">Race Results</h2>
+    <div class="podium" id="podium"></div>
+    <div class="row">
+      <button class="btn ghost" id="results-leave">Leave Room</button>
+      <button class="btn big" id="rematch">Back to Lobby</button>
+    </div>
+  </section>
+
+  <section class="screen" id="s-howto">
+    <h2 class="heading">How to Play</h2>
+    <ul class="howto">
+      <li><b>← →</b> or <b>A D</b> run · <b>Space / ↑ / W</b> jump</li>
+      <li><b>Speed = height.</b> Build a run-up and your capy jumps way higher. At full tilt it cartwheels.</li>
+      <li><b>Ricochet off the walls:</b> hit a wall in mid-air and you fly back the other way at full speed. Steer the new way straight away to keep it. Jump right as you reach a wall to kick off it.</li>
+      <li><b>Combos:</b> chain jumps of 2+ floors before the meter on the left runs out. Score = 10 × floor + combo².</li>
+      <li>The tower starts moving at floor 5 and <b>speeds up every 30 s</b>. Drop off the bottom and it's over.</li>
+      <li><b>P</b> pause · <b>M</b> mute · <b>N</b> next track</li>
+    </ul>
+    <button class="btn big" data-back>Got it</button>
+  </section>
+
+  <div id="toast"></div>
+  <div id="touch" aria-hidden="true">
+    <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="jump" class="jump">JUMP</button>
   </div>
-  <div id="overlay" class="overlay">
-    <h1 class="title">CAPY TOWER</h1>
-    <p class="sub">climb the tower. don't fall.</p>
-    <div class="controls">
-      <span>&larr; &rarr; / A D &mdash; move</span>
-      <span>SPACE / &uarr; / W &mdash; jump (hold to jump higher)</span>
-      <span>R &mdash; restart &middot; P &mdash; pause &middot; M &mdash; mute</span>
-    </div>
-    <button id="start-btn">START</button>
-    <p class="hint" id="overlay-hint"></p>
-  </div>
+  <div id="track"></div>
 </div>
-<script src="game.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

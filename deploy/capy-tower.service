@@ -1,0 +1,20 @@
+# /etc/systemd/system/capy-tower.service — installed by deploy/install.sh
+[Unit]
+Description=Capy Tower online race server (WebSocket relay)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Environment=PORT=__PORT__
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/env node /opt/capy-tower/tower-server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

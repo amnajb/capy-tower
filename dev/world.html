@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>World preview</title>
+<style>
+  body{margin:0;background:#15121c;color:#eee;font:13px system-ui,sans-serif}
+  #main{display:block}
+  #strip{display:flex;gap:6px;padding:6px}
+  #strip figure{margin:0;text-align:center}
+  #bar{padding:6px 8px}
+  a{color:#8fe6ff}
+</style>
+</head>
+<body>
+<div id="bar">
+  ?floor=N (camera floor) · ?strip=1 (all themes) · ?bench=1 · ?anim=1 (live scroll) ·
+  <span id="info"></span>
+</div>
+<canvas id="main"></canvas>
+<div id="strip"></div>
+<script type="module">
+import { VIEW_W, VIEW_H, WALL_W, FLOOR_GAP, THEMES, preloadWorld,
+         drawBackground, drawPlatform, drawSideWalls } from '../js/world.js';
+
+const q = new URLSearchParams(location.search);
+const K = +(q.get('k') || 1);
+const time0 = +(q.get('t') || 3.2);
+
+function rnd(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+const plats = new Map();
+function platFor(n) {
+  if (!plats.has(n)) {
+    if (n % 50 === 0) plats.set(n, { n, x0: WALL_W, x1: VIEW_W - WALL_W });
+    else {
+      const r = rnd(n * 977 + 13); r(); r();
+      const w = 90 + r() * 130, x0 = WALL_W + r() * (VIEW_W - 2 * WALL_W - w);
+      plats.set(n, { n, x0, x1: x0 + w });
+    }
+  }
+  return plats.get(n);
+}
+function scene(ctx, camY, time, k) {
+  ctx.setTransform(k, 0, 0, k, 0, 0);
+  drawBackground(ctx, camY, time);
+  const n0 = Math.floor(camY / FLOOR_GAP) - 1, n1 = Math.ceil((camY + VIEW_H) / FLOOR_GAP) + 1;
+  for (let n = Math.max(0, n0); n <= n1; n++) drawPlatform(ctx, platFor(n), camY, time);
+  drawSideWalls(ctx, camY, time);
+}
+function makeCanvas(k, parent) {
+  const c = document.createElement('canvas');
+  c.width = VIEW_W * k; c.height = VIEW_H * k;
+  c.style.width = VIEW_W * k + 'px'; c.style.height = VIEW_H * k + 'px';
+  (parent || document.body).appendChild(c);
+  return c;
+}
+
+preloadWorld();
+const main = document.getElementById('main');
+if (q.get('strip')) {
+  main.remove();
+  const strip = document.getElementById('strip');
+  const k = +(q.get('k') || .5);
+  const at = q.get('at') ? +q.get('at') : 22;
+  THEMES.forEach((T, i) => {
+    const f = document.createElement('figure');
+    const c = makeCanvas(k, f);
+    const cap = document.createElement('figcaption'); cap.textContent = i + ' ' + T.name; f.appendChild(cap);
+    strip.appendChild(f);
+    scene(c.getContext('2d'), (i * 50 + at) * FLOOR_GAP - 150, time0, k);
+  });
+  window.done = true;
+} else {
+  main.width = VIEW_W * K; main.height = VIEW_H * K;
+  main.style.width = VIEW_W * K + 'px'; main.style.height = VIEW_H * K + 'px';
+  const ctx = main.getContext('2d');
+  let camY = +(q.get('floor') || 0) * FLOOR_GAP - 120;
+  if (camY < 0) camY = 0;
+  if (q.get('bench')) {
+    const N = 300;
+    scene(ctx, camY, 0, K);
+    const t0 = performance.now();
+    for (let i = 0; i < N; i++) scene(ctx, camY + i * 3, i / 60, K);
+    const ms = (performance.now() - t0) / N;
+    document.getElementById('info').textContent = `avg ${ms.toFixed(2)} ms/frame over ${N} frames`;
+    window.benchMs = ms;
+    window.done = true;
+  } else if (q.get('anim')) {
+    let t = 0;
+    const loop = () => { t += 1 / 60; camY += 1.5; scene(ctx, camY, t, K); document.getElementById('info').textContent = 'floor ' + (camY / FLOOR_GAP).toFixed(1); requestAnimationFrame(loop); };
+    loop(); window.done = true;
+  } else {
+    scene(ctx, camY, time0, K);
+    document.getElementById('info').textContent = 'camY ' + camY;
+    window.done = true;
+  }
+}
+</script>
+</body>
+</html>

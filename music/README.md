@@ -1,0 +1,1 @@
+Drop hip hop instrumental MP3s in this folder and list them in `tracks.json` as `{"tracks": [{"file": "beat.mp3", "name": "Beat Name"}]}`; listed tracks play in order (looping the list) and take priority over the built-in procedural beats, which play whenever the list is empty or no file loads.

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capy Tower audio test</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#16131f;color:#f3ead8;margin:0;padding:16px;max-width:760px}
+  h1{font-size:20px} h2{font-size:14px;letter-spacing:.12em;opacity:.6;margin:20px 0 8px}
+  button{font:inherit;margin:3px;padding:8px 12px;border-radius:8px;border:1px solid #5a4f73;background:#2a2438;color:inherit;cursor:pointer}
+  button:hover{background:#3a3150}
+  #now{font-family:ui-monospace,monospace;margin:10px 0}
+  label{display:flex;gap:10px;align-items:center}
+</style>
+</head>
+<body>
+<h1>Capy Tower — audio test</h1>
+<div id="now">not started (click anything)</div>
+<h2>MUSIC</h2>
+<div>
+  <button id="start">start (tracks.json / procedural)</button>
+  <button id="next">next</button>
+  <button id="stop">stop</button>
+  <button id="mute">mute</button>
+</div>
+<div id="tracks"></div>
+<label>intensity <input id="int" type="range" min="0" max="1" step="0.01" value="0"> <span id="intv">0</span></label>
+<h2>SFX</h2>
+<div id="sfx"></div>
+<h2>PRAISE (0..9)</h2>
+<div id="praise"></div>
+<script type="module">
+import { createAudio, TRACKS } from '../js/audio.js';
+let A = null;
+const $ = id => document.getElementById(id);
+const get = () => (A ||= createAudio({ base: '../' }));
+const show = () => { $('now').textContent = A ? `${A.music.mode || 'stopped'} · ${A.music.trackName}${A.muted ? ' · muted' : ''}` : ''; };
+setInterval(show, 300);
+const btn = (parent, label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = () => { fn(get()); show(); }; $(parent).appendChild(b); };
+$('start').onclick = () => get().music.start();
+$('next').onclick = () => get().music.next();
+$('stop').onclick = () => get().music.stop();
+$('mute').onclick = () => { const a = get(); a.setMuted(!a.muted); };
+TRACKS.forEach((t, i) => btn('tracks', `${i + 1}. ${t.name} (${t.bpm})`, a => a.music.play(i)));
+$('int').oninput = e => { $('intv').textContent = e.target.value; get().music.setIntensity(+e.target.value); };
+const S = [
+  ['jump 0', a => a.sfx.jump(0)], ['jump 0.5', a => a.sfx.jump(0.5)], ['jump 1', a => a.sfx.jump(1)],
+  ['land', a => a.sfx.land()], ['wallBounce', a => a.sfx.wallBounce()],
+  ['combo 2', a => a.sfx.combo(2)], ['combo 8', a => a.sfx.combo(8)], ['combo 20', a => a.sfx.combo(20)],
+  ['comboEnd', a => a.sfx.comboEnd()], ['hurry', a => a.sfx.hurry()],
+  ['select', a => a.sfx.select()], ['confirm', a => a.sfx.confirm()],
+  ['countdown 3', a => a.sfx.countdown(3)], ['countdown 0 (GO)', a => a.sfx.countdown(0)],
+  ['gameOver', a => a.sfx.gameOver()], ['join', a => a.sfx.join()],
+];
+S.forEach(([l, f]) => btn('sfx', l, f));
+['SWEET', 'GREAT', 'SUPER', 'WOW', 'AMAZING', 'EXTREME', 'FANTASTIC', 'SPLENDID', 'NO WAY', 'INSANE']
+  .forEach((w, i) => btn('praise', `${i} ${w}!`, a => a.sfx.praise(i)));
+window.__audio = () => A;
+</script>
+</body>
+</html>

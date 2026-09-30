@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Capy Tower — character sheet</title>
+<style>body{margin:0;background:#2b3a4a;color:#fff;font:12px system-ui}canvas{display:block}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import { CHARACTERS, drawCharacter, drawPortrait } from '../js/characters.js';
+const q = new URLSearchParams(location.search);
+const fixedT = q.has('t') ? +q.get('t') : null;
+const ANIMS = ['idle', 'run', 'jump', 'fall', 'spin', 'edge', 'land', 'cheer', 'dead'];
+const SC = +(q.get('scale') || 1.6);
+const CW = 64 * SC, RH = 80 * SC, PW = 150, PH = 170;
+const W = 90 + ANIMS.length * CW + 20, H = 30 + CHARACTERS.length * RH + PH + 40 + 170;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+function frame(ms) {
+  const T = fixedT !== null ? fixedT : ms / 1000;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#6fa7c9'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff'; ctx.font = '12px system-ui';
+  ANIMS.forEach((a, i) => ctx.fillText(a, 90 + i * CW + 8, 18));
+  CHARACTERS.forEach((ch, row) => {
+    const y0 = 30 + row * RH;
+    ctx.fillStyle = '#fff'; ctx.fillText(ch.name, 10, y0 + RH * 0.6);
+    ANIMS.forEach((a, i) => {
+      const x = 90 + i * CW + CW / 2, fy = y0 + RH - 12;
+      ctx.fillStyle = '#7c6a55'; ctx.fillRect(x - CW / 2 + 4, fy, CW - 8, 6);
+      ctx.save(); ctx.translate(x, fy); ctx.scale(SC, SC);
+      const facing = row % 2 ? -1 : 1;
+      drawCharacter(ctx, ch.id, { anim: a, t: T + row * 0.37, facing, vx: a === 'run' ? 300 * facing : 120, vy: a === 'jump' ? 700 : a === 'fall' ? -900 : 0, squash: a === 'land' ? 0.8 : 0, spin: (T * 12) % (Math.PI * 2) });
+      ctx.restore();
+    });
+  });
+  const py = 30 + CHARACTERS.length * RH + 10;
+  CHARACTERS.forEach((ch, i) => {
+    ctx.save(); ctx.translate(20 + i * (PW + 16), py);
+    ctx.fillStyle = '#1b2433'; ctx.beginPath(); ctx.roundRect(0, 0, PW, PH, 12); ctx.fill();
+    drawPortrait(ctx, ch.id, PW, PH, T + i);
+    ctx.restore();
+  });
+  // scale strip: 1x, 2x, 3x
+  const sy = py + PH + 170;
+  [1, 2, 3].forEach((s, i) => CHARACTERS.forEach((ch, j) => {
+    ctx.save(); ctx.translate(40 + i * 330 + j * (26 + s * 22) , sy); ctx.scale(s, s);
+    drawCharacter(ctx, ch.id, { anim: 'idle', t: T, facing: 1 }); ctx.restore();
+  }));
+  window.done = true;
+  if (fixedT === null) requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
