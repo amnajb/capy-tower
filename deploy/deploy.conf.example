@@ -1,0 +1,3 @@
+# Copy to deploy/deploy.conf (gitignored) and fill in.
+HOST="user@your-vps"
+DEST="/var/www/arcade/tower"   # the arcade installer routes /tower/ here

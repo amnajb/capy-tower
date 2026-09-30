@@ -37,3 +37,13 @@ python3 -m http.server 8777
   squash & stretch, screen shake on hard landings.
 - World: day-to-night sky as you climb (stars, sun and moon), parallax
   mountains and clouds, brick tower walls, grass-to-snow platforms.
+
+## Deploy (APFORGE arcade)
+
+```bash
+cp deploy/deploy.conf.example deploy/deploy.conf   # once; set HOST
+git pull && deploy/install.sh
+```
+
+Copies the game files to `/var/www/arcade/tower` on the VPS. The arcade
+installer (capy-leap) routes `/tower/` there and adds the picker card.
