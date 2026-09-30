@@ -27,5 +27,13 @@ python3 -m http.server 8777
   higher you climb. Fall below the bottom of the screen and it's game over.
 - Variable jump: holding jump applies reduced gravity while rising, giving a
   much higher jump than a tap.
+- Jump feel: coyote time (0.1 s), jump buffering (0.12 s), terminal velocity,
+  snappier ground friction, softer air control, camera look-ahead.
+- Difficulty ramps with altitude: floor spacing and hole width grow, and the
+  camera's auto-scroll speeds up.
 - Combo: landing on consecutive floors within 1.4 s builds a combo multiplier.
 - Score = height climbed (meters). Best is persisted in localStorage.
+- Juice: jump/land dust, combo sparkles, motion trail at high speed, landing
+  squash & stretch, screen shake on hard landings.
+- World: day-to-night sky as you climb (stars, sun and moon), parallax
+  mountains and clouds, brick tower walls, grass-to-snow platforms.
