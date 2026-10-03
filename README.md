@@ -26,6 +26,12 @@ Live: https://capy.apforge.net/tower/
 - **Online race:** up to 4 players climb an identical seeded tower, each with their own camera and the
   others drawn live. Last capy standing wins.
 
+## Phones and apps
+
+The game supports touch controls that dock under the game, multi-touch steering and jumping, and zoom-proofing for iOS.
+It's an installable PWA (`manifest.json`, `sw.js`) and solo climbs work offline. Invite links use `?room=CODE`.
+The path to Google Play and App Store apps is in [`docs/MOBILE.md`](docs/MOBILE.md).
+
 ## Run locally
 
 ```bash

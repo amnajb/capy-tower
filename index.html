@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b3b45">
+<meta name="description" content="Icy Tower with the Capy Leap crew: sprint, ricochet off the walls, chain combos and race friends online.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Capy Tower">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Capy Tower</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +30,7 @@
       <button class="btn big" data-go="solo">Solo Climb</button>
       <button class="btn big alt" data-go="online">Online Race <small>up to 4</small></button>
       <button class="btn" data-go="howto">How to Play</button>
+      <button class="btn ghost" id="install" hidden>📲 Install the app</button>
     </div>
     <div class="records" id="records"></div>
   </section>
@@ -61,6 +71,7 @@
     <div class="row">
       <button class="btn ghost" id="leave">Leave</button>
       <button class="btn alt" id="change-char">Change Capy</button>
+      <button class="btn alt" id="invite">Invite</button>
       <button class="btn big" id="ready">Ready</button>
     </div>
     <p class="status" id="lobby-status"></p>
@@ -95,15 +106,29 @@
       <li><b>Combos:</b> chain jumps of 2+ floors before the meter on the left runs out. Score = 10 × floor + combo².</li>
       <li>The tower starts moving at floor 5 and <b>speeds up every 30 s</b>. Drop off the bottom and it's over.</li>
       <li><b>P</b> pause · <b>M</b> mute · <b>N</b> next track</li>
+      <li><b>On a phone:</b> slide your left thumb on the pad to run, tap JUMP with your right. Turn the phone sideways for side controls.</li>
     </ul>
     <button class="btn big" data-back>Got it</button>
   </section>
 
+  <section class="screen" id="s-install">
+    <h2 class="heading">Install on iPhone</h2>
+    <ol class="howto">
+      <li>Tap the <b>Share</b> button <span class="ios-share">⬆︎</span> in Safari's toolbar.</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Open <b>Capy Tower</b> from your home screen: full screen, no browser bars, and solo climbs work offline.</li>
+    </ol>
+    <button class="btn big" data-back>Got it</button>
+  </section>
+
+  <button id="pause-btn" aria-label="Pause">❚❚</button>
   <div id="toast"></div>
-  <div id="touch" aria-hidden="true">
-    <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="jump" class="jump">JUMP</button>
-  </div>
   <div id="track"></div>
+</div>
+<div id="safe-probe"></div>
+<div id="touch" aria-hidden="true">
+  <div id="steer"><i class="l">◀</i><b class="knob"></b><i class="r">▶</i></div>
+  <div id="jump-pad"><span>JUMP</span></div>
 </div>
 <script type="module" src="js/main.js"></script>
 </body>

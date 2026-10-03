@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!-- App icon generator: ?s=512&mask=1 (mask = maskable safe zone padding).
+     Rendered to icons/*.png by a Playwright screenshot of the canvas. -->
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet"></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { drawCharacter } from '../js/characters.js';
+const q = new URLSearchParams(location.search);
+const S = +(q.get('s') || 512), mask = q.get('mask') === '1';
+const c = document.getElementById('c'); c.width = c.height = S;
+const g = c.getContext('2d');
+await document.fonts.load('80px "Lilita One"').catch(() => {});
+const k = S / 512;
+g.scale(k, k);
+// background: tower-stone teal with a sunburst
+const bg = g.createRadialGradient(256, 200, 20, 256, 256, 380);
+bg.addColorStop(0, '#2b7b8a'); bg.addColorStop(1, '#0b3b45');
+g.fillStyle = bg; g.fillRect(0, 0, 512, 512);
+g.save(); g.translate(256, 230);
+for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8); g.fillStyle = i % 2 ? 'rgba(255,243,218,.07)' : 'rgba(255,180,61,.10)';
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(-60, -420); g.lineTo(60, -420); g.closePath(); g.fill(); }
+g.restore();
+const z = mask ? 0.78 : 1;            // maskable icons keep art inside the 80% safe circle
+g.translate(256, 256); g.scale(z, z); g.translate(-256, -256);
+// platform
+g.fillStyle = '#8fa3a8'; g.strokeStyle = '#1f1612'; g.lineWidth = 7; g.lineJoin = 'round';
+g.beginPath(); g.roundRect(96, 352, 320, 40, 12); g.fill(); g.stroke();
+g.fillStyle = '#7bc96f'; g.beginPath(); g.roundRect(96, 352, 320, 14, 8); g.fill(); g.stroke();
+// capy mid-jump
+g.save(); g.translate(256, 348); g.scale(4.6, 4.6);
+drawCharacter(g, q.get('char') || 'capy', { anim: 'jump', t: 0.1, facing: 1, spin: 0, squash: 0, vx: 0, vy: 600 });
+g.restore();
+// title band
+if (!q.has('notext')) {
+  g.font = '86px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 16; g.strokeStyle = '#1f1612';
+  g.strokeText('TOWER', 256, 450); g.fillStyle = '#8fe6ff'; g.fillText('TOWER', 256, 450);
+}
+document.title = 'ready';
+</script></body></html>

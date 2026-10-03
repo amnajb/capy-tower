@@ -7,9 +7,18 @@
   --fit:1;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%,#123f4a,#061f25);
-  color:var(--cream);font-family:var(--body)}
-body{display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none}
+html,body{position:fixed;inset:0;height:100%;overflow:hidden;overscroll-behavior:none;
+  background:radial-gradient(120% 90% at 50% 20%,#123f4a,#061f25);color:var(--cream);font-family:var(--body);
+  -webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none}
+button,.btn,.card{touch-action:manipulation}
+input{touch-action:manipulation;-webkit-user-select:text;user-select:text}
+/* phone in play: game sits at the top, controls get the space below it */
+body.dock{align-items:flex-start;padding-top:env(safe-area-inset-top)}
+body.side{padding-top:0}
+#safe-probe{position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom)}
 #stage{position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 #game{display:block;position:absolute;inset:0}
 
@@ -115,8 +124,35 @@ input:focus{box-shadow:0 0 0 4px var(--ice)}
   padding:6px 14px;box-shadow:0 4px 0 var(--ink);opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap;z-index:5}
 #track{bottom:calc(14px*var(--fit));font-size:14px;background:var(--ice)}
 #toast.on,#track.on{opacity:1}
-#touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;padding:0 10px 12px;z-index:4;gap:10px}
+/* ---------- touch controls ---------- */
+#touch{position:fixed;z-index:6;display:none;pointer-events:none;gap:14px}
 #touch.on{display:flex}
-#touch button{width:calc(84px*var(--fit) + 20px);height:calc(84px*var(--fit) + 20px);border-radius:50%;border:3px solid var(--ink);
-  background:rgba(255,246,228,.55);font-family:var(--display);font-size:26px;color:var(--ink);touch-action:none}
-#touch .jump{margin-left:auto;background:rgba(255,180,61,.75);font-size:20px}
+body.dock #touch{left:0;right:0;bottom:0;height:var(--ctrl-h);
+  padding:12px max(14px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+body.side #touch{inset:0}
+#steer,#jump-pad{pointer-events:auto;touch-action:none;border:3px solid var(--ink);border-radius:26px;
+  box-shadow:0 6px 0 var(--ink);display:flex;align-items:center;-webkit-user-select:none;user-select:none}
+#steer{flex:1.35;position:relative;justify-content:space-between;padding:0 22px;
+  background:linear-gradient(90deg,rgba(143,230,255,.28),rgba(255,246,228,.16) 45%,rgba(255,246,228,.16) 55%,rgba(143,230,255,.28))}
+#steer i{font-style:normal;font-family:var(--display);font-size:30px;color:var(--cream);opacity:.75;
+  text-shadow:0 3px 0 var(--ink);transition:transform .08s,opacity .08s}
+#steer[data-dir="l"] .l,#steer[data-dir="r"] .r{opacity:1;transform:scale(1.25);color:var(--ice)}
+#steer .knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;
+  background:var(--paper);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);
+  transform:translateX(calc(var(--kx,0) * 70%));transition:transform .05s}
+#jump-pad{flex:1;justify-content:center;background:var(--mango)}
+#jump-pad span{font-family:var(--display);font-size:30px;color:var(--ink);letter-spacing:.04em}
+#jump-pad.down{transform:translateY(5px);box-shadow:0 1px 0 var(--ink);filter:brightness(1.1)}
+body.side #steer,body.side #jump-pad{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));height:min(58vh,260px);
+  width:calc(var(--side-w) - 28px)}
+body.side #steer{left:max(14px,env(safe-area-inset-left));padding:0 14px}
+body.side #jump-pad{right:max(14px,env(safe-area-inset-right))}
+body.side #steer .knob{width:46px;height:46px;margin:-23px 0 0 -23px}
+body.side #steer i{font-size:26px}
+
+#pause-btn{display:none;position:absolute;left:50%;top:calc(8px*var(--fit));transform:translateX(-50%);z-index:5;
+  width:44px;height:36px;border-radius:12px;border:3px solid var(--ink);background:rgba(255,246,228,.85);
+  font-weight:900;color:var(--ink);box-shadow:0 3px 0 var(--ink)}
+body.dock #pause-btn,body.side #pause-btn{display:block}
+.ios-share{display:inline-block;border:2px solid var(--ink);border-radius:6px;padding:0 5px;font-size:13px}
+ol.howto{list-style:decimal inside}

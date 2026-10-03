@@ -6,6 +6,11 @@ import { Game } from './game.js';
 import { drawHud } from './hud.js';
 import { createAudio } from './audio.js';
 import { Net } from './net.js';
+import { installZoomGuards, haptic, keepAwake, registerPWA, onInstallAvailable, canInstall,
+         promptInstall, isStandalone } from './mobile.js';
+
+installZoomGuards();
+registerPWA();
 
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -20,9 +25,32 @@ const DT = 1 / 120;                          // fixed physics step: same jumps a
 const canvas = $('#game');
 const ctx = canvas.getContext('2d');
 let scale = 1;
+// touch devices: any coarse pointer, or the first real touch (iPad + keyboard)
+let isTouch = matchMedia('(any-pointer: coarse)').matches;
+window.addEventListener('touchstart', () => { if (!isTouch) { isTouch = true; resize(); } }, { once: true, passive: true });
+
+// Layout. On a phone in play the controls get their own space instead of
+// covering the tower: docked in the band under the game in portrait, or in
+// the side panels in landscape.
 function resize() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const fit = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
+  const W = window.innerWidth, H = window.innerHeight;
+  const touchPlay = isTouch && screen === 'play';
+  const side = touchPlay && W > H * 1.05;
+  const dock = touchPlay && !side;
+  const probe = getComputedStyle($('#safe-probe'));
+  const safeTop = dock ? parseFloat(probe.paddingTop) || 0 : 0;
+  const safeBot = dock ? parseFloat(probe.paddingBottom) || 0 : 0;
+  const ctrlH = dock ? Math.round(Math.min(220, Math.max(140, H * 0.22)) + safeBot) : 0;
+  // landscape: the side panels take all the width the portrait game leaves
+  const sideW = side ? Math.round(Math.min(340, Math.max(120, (W - VIEW_W * H / VIEW_H) / 2 - 8))) : 0;
+  const fit = Math.min((W - sideW * 2) / VIEW_W, (H - ctrlH - safeTop) / VIEW_H);
+  document.body.classList.toggle('dock', dock);
+  document.body.classList.toggle('side', side);
+  // controls grow into whatever is left under the game (tall phones)
+  const ctrlFill = dock ? Math.round(Math.min(300, Math.max(ctrlH, H - safeTop - VIEW_H * fit))) : 0;
+  document.documentElement.style.setProperty('--ctrl-h', ctrlFill + 'px');
+  document.documentElement.style.setProperty('--side-w', sideW + 'px');
   canvas.style.width = VIEW_W * fit + 'px';
   canvas.style.height = VIEW_H * fit + 'px';
   scale = fit * dpr;
@@ -33,7 +61,7 @@ function resize() {
   $('#stage').style.height = VIEW_H * fit + 'px';
 }
 window.addEventListener('resize', resize);
-resize();
+window.addEventListener('orientationchange', () => setTimeout(resize, 150));
 
 // ---------------------------------------------------------------- state
 let audio = null;
@@ -67,6 +95,8 @@ function show(name, push = true) {
   const first = $(`#s-${name} .btn.big`) || $(`#s-${name} .btn`);
   if (first && name !== 'online') setTimeout(() => first.focus({ preventScroll: true }), 0);
   $('#touch').classList.toggle('on', name === 'play' && isTouch);
+  keepAwake(name === 'play' || name === 'lobby');
+  resize();
 }
 function back() { show(history.pop() || 'title', false); }
 
@@ -129,7 +159,14 @@ function confirmChar() {
   store.set('char', CHARACTERS[charIdx].id);
   if (mode === 'solo') startSolo();
   else if (net.room) { net.hello(playerName(), CHARACTERS[charIdx].id); show('lobby'); renderLobby(); }
-  else show('online');
+  else {
+    show('online');
+    const code = $('#code').value.trim();
+    if (inviteCode.length === 4 && code === inviteCode && !confirmChar.joined) {
+      confirmChar.joined = true;
+      $('#join').click();
+    }
+  }
 }
 $('#select-go').addEventListener('click', confirmChar);
 
@@ -177,6 +214,16 @@ $('#leave').addEventListener('click', () => { net.leave(); show('online', false)
 $('#results-leave').addEventListener('click', () => { net.leave(); show('online', false); });
 $('#rematch').addEventListener('click', () => { show('lobby', false); renderLobby(); });
 $('#change-char').addEventListener('click', () => { mode = 'race'; show('select'); });
+// invite: native share sheet on phones, clipboard elsewhere
+$('#invite').addEventListener('click', async () => {
+  if (!net.room) return;
+  const url = `${location.origin}${location.pathname}?room=${net.room.code}`;
+  const text = `Race me up Capy Tower! Room ${net.room.code}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Capy Tower race', text, url }); return; }
+    await navigator.clipboard.writeText(url); toast('Invite link copied');
+  } catch (e) { if (e && e.name !== 'AbortError') toast(`Room code: ${net.room.code}`, 2600); }
+});
 $('#ready').addEventListener('click', () => {
   if (!net.room) return;
   audio && audio.sfx.confirm();
@@ -184,7 +231,7 @@ $('#ready').addEventListener('click', () => {
   else { const me = net.room.players.find(p => p.id === net.id); net.ready(!(me && me.ready)); }
 });
 
-net.on('joined', () => { audio && audio.sfx.join(); show('lobby'); });
+net.on('joined', () => { audio && audio.sfx.join(); $('#toast').classList.remove('on'); show('lobby'); });
 net.on('lobby', () => { if (screen === 'lobby') renderLobby(); });
 net.on('err', m => { $('#online-status').textContent = m.msg; $('#lobby-status').textContent = m.msg; toast(m.msg); });
 net.on('ev', m => {
@@ -284,7 +331,6 @@ function showResults(order) {
 const input = { left: false, right: false, jump: false };
 const KEYS = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
                ArrowUp: 'jump', KeyW: 'jump', Space: 'jump' };
-const isTouch = matchMedia('(pointer: coarse)').matches;
 
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -315,16 +361,79 @@ window.addEventListener('keyup', e => { const k = KEYS[e.code]; if (k) input[k] 
 window.addEventListener('blur', () => { input.left = input.right = input.jump = false; });
 function focusCard() { const c = $$('#roster .card')[charIdx]; c && c.focus({ preventScroll: true }); }
 document.addEventListener('pointerdown', () => ensureAudio(), { once: true });
+// iOS only unlocks Web Audio inside touchend on older versions
+document.addEventListener('touchend', () => { if (audio && audio.ctx.state !== 'running' && !document.hidden) audio.ctx.resume(); }, { passive: true });
 
-// touch buttons
-$$('#touch button').forEach(b => {
-  const k = b.dataset.k;
-  const down = e => { e.preventDefault(); ensureAudio(); input[k] = true;
-    if (k === 'jump') { if (game && game.over && mode === 'solo' && game.overT > 0.6) startSolo(); else game && game.jumpPressed(); } };
-  const up = e => { e.preventDefault(); input[k] = false; };
-  b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up);
-  b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+// touch controls: a steering pad (slide your thumb between left and right
+// without lifting) and a big JUMP pad. Each tracks its own pointer, so
+// steering and jumping are true multi-touch.
+const steer = $('#steer'), jumpPad = $('#jump-pad');
+let steerId = null, jumpId = null;
+function steerAt(e) {
+  const r = steer.getBoundingClientRect();
+  const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+  const dead = 0.12;
+  input.left = dx < -dead; input.right = dx > dead;
+  steer.dataset.dir = input.left ? 'l' : input.right ? 'r' : '';
+  steer.style.setProperty('--kx', Math.max(-1, Math.min(1, dx)).toFixed(3));
+}
+function steerEnd(e) {
+  if (e.pointerId !== steerId) return;
+  steerId = null; input.left = input.right = false;
+  steer.dataset.dir = ''; steer.style.setProperty('--kx', 0);
+}
+steer.addEventListener('pointerdown', e => {
+  e.preventDefault(); ensureAudio();
+  steerId = e.pointerId; steer.setPointerCapture(e.pointerId); steerAt(e);
 });
+steer.addEventListener('pointermove', e => { if (e.pointerId === steerId) { e.preventDefault(); steerAt(e); } });
+steer.addEventListener('pointerup', steerEnd);
+steer.addEventListener('pointercancel', steerEnd);
+steer.addEventListener('lostpointercapture', steerEnd);
+
+function jumpDown(e) {
+  e.preventDefault(); ensureAudio();
+  jumpId = e.pointerId; jumpPad.setPointerCapture(e.pointerId);
+  jumpPad.classList.add('down'); input.jump = true;
+  if (game && game.over && mode === 'solo' && game.overT > 0.6) { startSolo(); return; }
+  if (paused) { paused = false; return; }
+  game && game.jumpPressed();
+  haptic(8);
+}
+function jumpUp(e) {
+  if (e.pointerId !== jumpId) return;
+  jumpId = null; input.jump = false; jumpPad.classList.remove('down');
+}
+jumpPad.addEventListener('pointerdown', jumpDown);
+jumpPad.addEventListener('pointerup', jumpUp);
+jumpPad.addEventListener('pointercancel', jumpUp);
+jumpPad.addEventListener('lostpointercapture', jumpUp);
+$('#pause-btn').addEventListener('click', () => {
+  if (mode === 'solo' && game && !game.over) { paused = !paused; audio && audio.sfx.select(); }
+});
+
+// phones: leaving the app (call, home button, lock) pauses a solo climb and
+// quiets the music; the race keeps going (the tower doesn't wait for anyone)
+document.addEventListener('visibilitychange', () => {
+  const hidden = document.visibilityState === 'hidden';
+  if (hidden) {
+    if (screen === 'play' && mode === 'solo' && game && !game.over) paused = true;
+    input.left = input.right = input.jump = false;
+    if (audio && audio.ctx.state === 'running') audio.ctx.suspend();
+  } else {
+    if (audio && !audio.muted) audio.ctx.resume();
+    keepAwake(screen === 'play' || screen === 'lobby');
+  }
+});
+
+// install as an app (Android/desktop prompt, iOS instructions)
+const installBtn = $('#install');
+onInstallAvailable(() => { installBtn.hidden = !canInstall(); });
+installBtn.addEventListener('click', async () => {
+  const r = await promptInstall();
+  if (r === 'ios') show('install');
+});
+document.documentElement.classList.toggle('standalone', isStandalone());
 
 // gamepad: d-pad / left stick + A
 let padJump = false;
@@ -425,9 +534,13 @@ function hudOpts() {
 function afterStep() {
   const g = game;
   for (const ev of g.events.splice(0)) {
+    if (ev.k === 'wall') haptic(12);
+    if (ev.k === 'praise') haptic([20, 40, 30]);
+    if (ev.k === 'hurry') haptic([40, 60, 40]);
     if (ev.k === 'praise' && mode === 'race') net.event('praise', { word: ev.word, floors: ev.floors });
     if (ev.k === 'hurry' && audio) audio.music.setIntensity(Math.min(1, ev.level / 6));
     if (ev.k === 'dead') {
+      haptic(120);
       if (mode === 'solo') setTimeout(() => { if (game === g) soloOver(); }, 1300);
       else net.dead({ floor: g.maxFloor, score: g.score, combo: g.bestCombo });
     }
@@ -457,5 +570,14 @@ window.__ct = { get game() { return game; }, get screen() { return screen; }, in
                 pick: i => pickChar(i, true) };
 
 show('title', false);
+resize();
 requestAnimationFrame(frame);
-if (new URLSearchParams(location.search).has('solo')) { mode = 'solo'; startSolo(); }
+const params = new URLSearchParams(location.search);
+if (params.has('solo')) { mode = 'solo'; startSolo(); }
+// invite links: ?room=CODE -> pick a capy, then the online screen with the code filled in
+const inviteCode = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+if (inviteCode.length === 4) {
+  $('#code').value = inviteCode;
+  mode = 'race'; show('select');
+  toast(`Pick your capy to join room ${inviteCode}`, 2600);
+}

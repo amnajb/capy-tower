@@ -20,6 +20,11 @@ export class Net {
   url() {
     const q = new URLSearchParams(location.search).get('ws');
     if (q) return q;
+    // packaged as a native app (Capacitor serves from capacitor:// on iOS and
+    // https://localhost on Android): talk to the live race server
+    if (window.Capacitor || location.protocol === 'capacitor:' || location.protocol === 'file:' ||
+        (location.hostname === 'localhost' && location.port === ''))
+      return 'wss://capy.apforge.net/tower/ws';
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.port !== '')
       return `${proto}//${location.hostname}:8096/`;
