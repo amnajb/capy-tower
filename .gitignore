@@ -5,3 +5,7 @@ deploy/deploy.conf
 
 # Capy Leap portrait art comes from the private capyleap repo: keep it local
 docs/endings-ref/*-portrait.jpg
+
+# raw Grok downloads (the game uses the converted copies in endings/)
+docs/capy-tower-ending-*.mp4
+*:Zone.Identifier
