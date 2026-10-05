@@ -15,36 +15,58 @@
 <body>
 <div id="bar">
   ?floor=N (camera floor) · ?strip=1 (all themes) · ?bench=1 · ?anim=1 (live scroll) ·
+  ?map=onsen|reef|sky|toys (+ floor=199 for the summit) · ?previews=1 (map cards) ·
   <span id="info"></span>
 </div>
 <canvas id="main"></canvas>
 <div id="strip"></div>
 <script type="module">
-import { VIEW_W, VIEW_H, WALL_W, FLOOR_GAP, THEMES, preloadWorld,
+import { VIEW_W, VIEW_H, WALL_W, FLOOR_GAP, THEMES, preloadWorld, setWorldMap, drawMapPreview,
          drawBackground, drawPlatform, drawSideWalls } from '../js/world.js';
 
 const q = new URLSearchParams(location.search);
 const K = +(q.get('k') || 1);
 const time0 = +(q.get('t') || 3.2);
+const MAPDEF = { onsen: { themes: [7], kinds: ['geyser'] }, reef: { themes: [8], kinds: ['jelly'] },
+                 sky: { themes: [9], kinds: ['cloud'] }, toys: { themes: [10], kinds: ['conveyor', 'spring'] } }[q.get('map')];
+const SUMMIT = 200;
+if (MAPDEF) setWorldMap({ themes: MAPDEF.themes, span: 50, summit: SUMMIT });
 
 function rnd(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 const plats = new Map();
 function platFor(n) {
+  if (MAPDEF && n > SUMMIT) return null;
   if (!plats.has(n)) {
-    if (n % 50 === 0) plats.set(n, { n, x0: WALL_W, x1: VIEW_W - WALL_W });
+    if (n % 50 === 0 || (MAPDEF && n === SUMMIT)) plats.set(n, { n, x0: WALL_W, x1: VIEW_W - WALL_W, kind: MAPDEF && n === SUMMIT ? 'summit' : 'normal' });
     else {
       const r = rnd(n * 977 + 13); r(); r();
       const w = 90 + r() * 130, x0 = WALL_W + r() * (VIEW_W - 2 * WALL_W - w);
-      plats.set(n, { n, x0, x1: x0 + w });
+      const p = { n, x0, x1: x0 + w };
+      if (MAPDEF && n % 2 === 1) {
+        p.kind = MAPDEF.kinds[((n - 1) / 2) % MAPDEF.kinds.length];
+        p.dir = n % 4 === 1 ? 1 : -1;
+        p.fx = { warn: 0, erupt: 0, squish: 0, spring: 0 };
+        if (p.kind === 'spring') p.x1 = Math.min(p.x1, p.x0 + 120);
+        if (p.kind === 'cloud') { p.bx = p.x0; p.w0 = p.x1 - p.x0; }
+      }
+      plats.set(n, p);
     }
   }
   return plats.get(n);
+}
+// fake fx so every kind shows its animation (game.js drives these for real)
+function animate(p, time) {
+  if (!p || !p.fx) return;
+  const ph = (time * .45 + p.n * .37) % 1;
+  if (p.kind === 'geyser') { p.fx.warn = ph > .45 && ph < .7 ? 1 : 0; p.fx.erupt = ph >= .7 ? Math.min(1, (ph - .7) / .08) : 0; }
+  if (p.kind === 'jelly' || p.kind === 'spring') { p.fx.squish = ph < .15 ? Math.sin(ph / .15 * Math.PI) : 0; p.fx.spring = ph >= .15 && ph < .3 ? Math.sin((ph - .15) / .15 * Math.PI) : 0; }
+  if (p.kind === 'cloud') { const a = Math.sin(time * 1.4 + p.n) * 70; const x0 = Math.max(WALL_W, Math.min(VIEW_W - WALL_W - p.w0, p.bx + a)); p.x0 = x0; p.x1 = x0 + p.w0; }
 }
 function scene(ctx, camY, time, k) {
   ctx.setTransform(k, 0, 0, k, 0, 0);
   drawBackground(ctx, camY, time);
   const n0 = Math.floor(camY / FLOOR_GAP) - 1, n1 = Math.ceil((camY + VIEW_H) / FLOOR_GAP) + 1;
-  for (let n = Math.max(0, n0); n <= n1; n++) drawPlatform(ctx, platFor(n), camY, time);
+  for (let n = Math.max(0, n0); n <= n1; n++) { const p = platFor(n); if (!p) continue; animate(p, time); drawPlatform(ctx, p, camY, time); }
   drawSideWalls(ctx, camY, time);
 }
 function makeCanvas(k, parent) {
@@ -57,7 +79,20 @@ function makeCanvas(k, parent) {
 
 preloadWorld();
 const main = document.getElementById('main');
-if (q.get('strip')) {
+if (q.get('previews')) {
+  main.remove();
+  const strip = document.getElementById('strip');
+  const sets = [[0, 1, 2, 3, 4, 5, 6], [7], [8], [9], [10]];
+  sets.forEach(th => {
+    const f = document.createElement('figure');
+    const c = document.createElement('canvas'); c.width = 200; c.height = 150; f.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = THEMES[th[0]].name; f.appendChild(cap);
+    strip.appendChild(f);
+    drawMapPreview(c.getContext('2d'), th, 200, 150, time0);
+  });
+  // after previews, the classic map state must be untouched
+  window.done = true;
+} else if (q.get('strip')) {
   main.remove();
   const strip = document.getElementById('strip');
   const k = +(q.get('k') || .5);
@@ -67,8 +102,10 @@ if (q.get('strip')) {
     const c = makeCanvas(k, f);
     const cap = document.createElement('figcaption'); cap.textContent = i + ' ' + T.name; f.appendChild(cap);
     strip.appendChild(f);
-    scene(c.getContext('2d'), (i * 50 + at) * FLOOR_GAP - 150, time0, k);
+    if (i > 6) setWorldMap({ themes: [i], span: 50, summit: null }); else setWorldMap({});
+    scene(c.getContext('2d'), ((i > 6 ? 0 : i * 50) + at) * FLOOR_GAP - 150, time0, k);
   });
+  setWorldMap({});
   window.done = true;
 } else {
   main.width = VIEW_W * K; main.height = VIEW_H * K;
@@ -76,6 +113,7 @@ if (q.get('strip')) {
   const ctx = main.getContext('2d');
   let camY = +(q.get('floor') || 0) * FLOOR_GAP - 120;
   if (camY < 0) camY = 0;
+  if (MAPDEF) camY = Math.min(camY, SUMMIT * FLOOR_GAP - 140);   // the game stops the camera at the summit
   if (q.get('bench')) {
     const N = 300;
     scene(ctx, camY, 0, K);

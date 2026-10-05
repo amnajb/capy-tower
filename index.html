@@ -46,6 +46,22 @@
     <p class="hint">← → to choose · Enter to go</p>
   </section>
 
+  <section class="screen" id="s-maps">
+    <h2 class="heading">Pick a tower</h2>
+    <div class="maplist" id="maplist"></div>
+    <div class="row">
+      <button class="btn ghost" data-back>Back</button>
+      <button class="btn big" id="maps-go">Climb!</button>
+    </div>
+    <p class="hint">↑ ↓ to choose · Enter to climb</p>
+  </section>
+
+  <section class="screen" id="s-ending">
+    <video id="ending-video" playsinline preload="auto"></video>
+    <div id="ending-title"></div>
+    <button class="btn ghost" id="ending-skip">Skip ▸</button>
+  </section>
+
   <section class="screen" id="s-online">
     <h2 class="heading">Online Race</h2>
     <p class="sub">Same tower, up to four capybaras. Last one standing wins.</p>
@@ -67,6 +83,11 @@
   <section class="screen" id="s-lobby">
     <h2 class="heading">Room <span id="room-code" class="code"></span></h2>
     <p class="sub" id="lobby-sub">Share the code with friends</p>
+    <div class="map-pick" id="map-pick">
+      <button class="btn ghost" id="map-prev" aria-label="Previous tower">◀</button>
+      <div><em id="lobby-map-tag"></em><b id="lobby-map-name"></b></div>
+      <button class="btn ghost" id="map-next" aria-label="Next tower">▶</button>
+    </div>
     <div class="slots" id="slots"></div>
     <div class="row">
       <button class="btn ghost" id="leave">Leave</button>

@@ -63,3 +63,38 @@ sfx.countdown(n); sfx.gameOver(); sfx.join();
 
 MP3s listed in `music/tracks.json` (`{ "tracks": [{ "file": "x.mp3", "name": "X" }] }`)
 take priority; the procedural boom-bap engine plays when none load.
+
+## Maps (v3): js/maps.js + world.js additions
+
+`js/maps.js` (game side) defines `MAPS`. Map 0 is the classic endless tower; maps 1-4 are
+single-theme towers with a **summit** at floor 200 and a gameplay twist.
+
+| id | name | theme index | twist (game.js) | platform kinds |
+|---|---|---|---|---|
+| classic | Capy Tower | 0..6 cycle every 50 | none | normal |
+| onsen | Sakura Springs | 7 | steam geysers launch you up | normal, geyser |
+| reef | Coral Reef Spire | 8 | underwater: floaty low gravity | normal, jelly (bouncy jellyfish) |
+| sky | Cloud Carnival | 9 | drifting cloud platforms + wind gusts | normal, cloud (moves sideways) |
+| toys | Clockwork Toybox | 10 | conveyor belts + spring pads | normal, conveyor, spring |
+
+### world.js additions
+
+```js
+export function setWorldMap({ themes: [7], span: 50, summit: 200 | null });
+// themeIndexForFloor(n) -> themes[floor(n / span) % themes.length]
+// the sky (day -> sunset -> night -> space) runs over the summit height when
+// summit is set (summit = starry night at the top), else the classic floors.
+```
+
+`drawPlatform(ctx, plat, camY, time)`: `plat` may now carry
+
+- `kind`: `'normal' | 'geyser' | 'jelly' | 'cloud' | 'conveyor' | 'spring' | 'summit'`
+- `dir`: conveyor direction (+1 right / -1 left), belt animates in that direction
+- `fx`: animation inputs set by game.js each frame, all 0..1:
+  `fx.warn` (geyser bubbling before an eruption), `fx.erupt` (steam column, ~3 floors tall),
+  `fx.squish` (jelly/spring compressed by a landing), `fx.spring` (spring launch extension)
+- cloud platforms move: game.js changes `x0`/`x1` every frame (width fixed)
+- `summit`: full-width goal floor with a finish banner + trophy/flag in the map's style
+
+Floors above a summit don't exist (`tower.platform(n)` returns null for n > summit); draw open sky/
+roof there.

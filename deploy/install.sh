@@ -49,7 +49,7 @@ COMMIT="$(git rev-parse --short HEAD)"
 c_info "deploying capy-tower $COMMIT to $HOST:$DEST"
 
 # only the game files, straight from the commit (no deploy/, dev/, server/ or .git)
-FILES=(index.html style.css manifest.json sw.js icons js music)
+FILES=(index.html style.css manifest.json sw.js icons js music endings)
 if [ "$DRY" = 1 ]; then
   printf '    %s\n' "${FILES[@]}"; c_ok "dry run: nothing was changed."; exit 0
 fi

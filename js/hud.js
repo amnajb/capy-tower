@@ -27,6 +27,7 @@ export function drawHud(ctx, g, opts = {}) {
   drawClock(ctx, g);
   drawScore(ctx, g);
   drawComboMeter(ctx, g);
+  drawWind(ctx, g);
   if (g.race) drawLadder(ctx, g, opts.players || []);
   if (g.hurryFlash > 0) {
     const k = g.hurryFlash;
@@ -93,7 +94,25 @@ function drawClock(ctx, g) {
 function drawScore(ctx, g) {
   const x = VIEW_W - WALL_W - 10;
   outlinedText(ctx, String(g.score), x, 24, 26, '#fff3da', 'right');
-  outlinedText(ctx, `FLOOR ${g.maxFloor}`, x, 50, 15, '#ffe45c', 'right');
+  const summit = g.tower.summit;
+  outlinedText(ctx, summit ? `FLOOR ${g.maxFloor} / ${summit}` : `FLOOR ${g.maxFloor}`, x, 50, 15, '#ffe45c', 'right');
+  if (summit) {
+    // summit progress bar under the floor count
+    const w = 110, k = Math.min(1, g.maxFloor / summit);
+    ctx.fillStyle = 'rgba(255,246,228,.85)'; ctx.strokeStyle = INK; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(x - w, 62, w, 9, 5); ctx.fill(); ctx.stroke();
+    if (k > 0) { ctx.fillStyle = g.map.color || '#7be08a'; ctx.beginPath(); ctx.roundRect(x - w + 1.5, 63.5, (w - 3) * k, 6, 3); ctx.fill(); }
+  }
+}
+
+function drawWind(ctx, g) {
+  if (!g.windWarn && !g.wind) return;
+  const dir = g.windDir || 1;
+  const blink = g.windWarn && Math.floor(performance.now() / 150) % 2;
+  if (blink) return;
+  ctx.save(); ctx.translate(VIEW_W / 2, 118);
+  outlinedText(ctx, dir > 0 ? 'WIND  ➜' : '⬅  WIND', 0, 0, g.wind ? 26 : 20, g.wind ? '#9fd0ff' : '#fff3da');
+  ctx.restore();
 }
 
 function drawComboMeter(ctx, g) {

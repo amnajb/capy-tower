@@ -22,6 +22,7 @@ const TICK_MS = 66;                       // relay flush rate (~15 Hz)
 const IDLE_MS = 45000;
 const COUNTDOWN_MS = 3200;                // "3, 2, 1, GO" before the clock runs
 const CHARS = ['capy', 'yoru', 'tico', 'piko', 'chang'];
+const MAPS = ['classic', 'onsen', 'reef', 'sky', 'toys'];
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const rooms = new Map();                  // code -> room
@@ -126,7 +127,7 @@ function newCode() {
 }
 function roomView(r) {
   return {
-    code: r.code, state: r.state, host: r.host, pub: r.pub,
+    code: r.code, state: r.state, host: r.host, pub: r.pub, map: r.map || 'classic',
     players: r.players.map(p => ({
       id: p.id, name: p.name, char: p.char, ready: p.ready,
       host: p.id === r.host, result: p.result
@@ -140,7 +141,7 @@ function pushLobby(r) {
 function leaveRoom(c) {
   const r = c.room; if (!r) return;
   // quitting mid-race counts as falling off
-  if (r.state === 'playing' && !c.result) knockOut(r, c, c.state || {});
+  if (r.state === 'playing' && !c.result) knockOut(r, c, { floor: (c.state || {}).fl, score: (c.state || {}).sc });
   c.room = null; c.ready = false; c.result = null; c.state = null;
   r.players = r.players.filter(p => p !== c);
   r.players.forEach(p => p.send({ t: 'left', id: c.id }));
@@ -161,24 +162,32 @@ function joinRoom(c, r) {
 }
 
 /* ----------------------------------------------------------- race */
-function knockOut(r, c, d) {
-  const alive = r.players.filter(p => !p.result).length;   // including c
+// A racer is done either by falling off (knocked out) or by reaching the
+// summit on a summit map. Final order: summit finishers by time, then the
+// fallers, latest fall first; score breaks ties.
+function knockOut(r, c, d, summit = false) {
   c.result = {
     floor: Math.max(0, d.floor | 0), score: Math.max(0, d.score | 0),
-    combo: Math.max(0, d.combo | 0),
+    combo: Math.max(0, d.combo | 0), summit,
     time: Math.max(0, Date.now() - r.startedAt - COUNTDOWN_MS),
-    place: alive                                           // last one out = 1st
+    order: ++r.doneCount,
   };
   r.players.forEach(p => p.send({ t: 'out', id: c.id, result: c.result }));
-  log('room', r.code, c.name, 'out on floor', c.result.floor, 'place', c.result.place);
+  log('room', r.code, c.name, summit ? 'reached the summit' : 'out on floor', c.result.floor);
+}
+function ranked(players) {
+  return players.slice().sort((a, b) => {
+    const x = a.result, y = b.result;
+    if (x.summit !== y.summit) return x.summit ? -1 : 1;
+    if (x.summit) return x.time - y.time;
+    return y.order - x.order || y.score - x.score;
+  });
 }
 function checkFinished(r) {
   if (r.state !== 'playing' || r.players.some(p => !p.result)) return;
   r.state = 'lobby';
   r.players.forEach(p => { p.ready = false; });
-  const order = r.players.slice().sort((a, b) =>
-      a.result.place - b.result.place || b.result.score - a.result.score)
-    .map(p => ({ id: p.id, name: p.name, char: p.char, ...p.result }));
+  const order = ranked(r.players).map((p, i) => ({ id: p.id, name: p.name, char: p.char, ...p.result, place: i + 1 }));
   r.players.forEach(p => p.send({ t: 'results', order }));
   pushLobby(r);
   log('room', r.code, 'finished, winner', order[0] && order[0].name);
@@ -226,9 +235,10 @@ function handle(c, m) {
       if (!r || r.host !== c.id || r.state === 'playing') return;
       r.state = 'playing';
       r.startedAt = Date.now();
+      r.doneCount = 0;
       r.players.forEach(p => { p.result = null; p.state = null; p.ready = false; });
       const seed = (Math.random() * 2147483647) | 0;
-      r.players.forEach(p => p.send({ t: 'go', seed, countdown: COUNTDOWN_MS,
+      r.players.forEach(p => p.send({ t: 'go', seed, countdown: COUNTDOWN_MS, map: r.map || 'classic',
         players: r.players.map(q => ({ id: q.id, name: q.name, char: q.char })) }));
       pushLobby(r);
       log('room', r.code, 'race started with', r.players.length);
@@ -242,6 +252,18 @@ function handle(c, m) {
       const r = c.room; if (!r) return;
       const out = { t: 'ev', id: c.id, k: String(m.k || '').slice(0, 16), d: m.d };
       r.players.forEach(p => { if (p !== c) p.send(out); });
+      break;
+    }
+    case 'map':
+      if (!c.room || c.room.host !== c.id || c.room.state === 'playing') return;
+      if (MAPS.includes(m.map)) { c.room.map = m.map; pushLobby(c.room); }
+      break;
+    case 'summit': {
+      const r = c.room;
+      if (!r || r.state !== 'playing' || c.result || (r.map || 'classic') === 'classic') return;
+      knockOut(r, c, m, true);
+      checkFinished(r);
+      pushLobby(r);
       break;
     }
     case 'dead': {

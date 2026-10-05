@@ -4,7 +4,8 @@
 import { VIEW_W, VIEW_H, WALL_W, FLOOR_GAP, PLAT_H,
          drawBackground, drawPlatform, drawSideWalls } from './world.js';
 import { drawCharacter, CHARACTERS } from './characters.js';
-import { Tower } from './tower.js';
+import { Tower, hash01 } from './tower.js';
+import { MAPS } from './maps.js';
 
 // ---------------------------------------------------------------- tuning
 // Icy Tower's core: horizontal speed turns into jump height. Build a run-up,
@@ -36,7 +37,13 @@ export const TUNING = {
   HURRY_EVERY: 30,       // seconds between speed-ups
   // Icy Tower's 7 steps (0,1,2,4,6,9,11 px/frame at 80 px floors), scaled
   SCROLL_LEVELS: [0, 63, 126, 252, 378, 567, 693],
-  PUSH_ZONE: 0.30,       // player above this fraction of screen from top pushes camera
+  PUSH_ZONE: 0.30,
+  // map twists
+  GEYSER: 1480,          // steam launch (~5.5 floors)
+  JELLY_MIN: 980, JELLY_MAX: 1420,
+  SPRING: 1380,
+  BELT: 150,             // conveyor px/s
+  WIND_AIR: 700, WIND_GROUND: 320,       // player above this fraction of screen from top pushes camera
 };
 
 export const PRAISE = [
@@ -56,8 +63,16 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const PLAY_L = WALL_W, PLAY_R = VIEW_W - WALL_W;
 
 export class Game {
-  constructor({ seed, char, audio, race = null, name = 'you' }) {
-    this.tower = new Tower(seed);
+  constructor({ seed, char, audio, race = null, name = 'you', map = MAPS[0] }) {
+    this.map = map;
+    this.seed = seed | 0;
+    this.tower = new Tower(seed, map);
+    // underwater: floaty gravity, with jumps scaled so they're a bit higher
+    // than on land but hang in the water much longer
+    this.grav = map.mech.grav || 1;
+    this.jumpScale = this.grav < 1 ? 0.87 : 1;
+    this.wind = 0; this.windWarn = 0; this.windDir = 0;
+    this.finished = false; this.summitTime = 0; this.summitBonus = 0;
     this.char = char;
     this.stats = (CHARACTERS.find(c => c.id === char) || CHARACTERS[0]).stats;
     this.audio = audio;
@@ -91,7 +106,7 @@ export class Game {
     this.events = [];            // for main.js: {k, ...}
   }
 
-  get score() { return this.maxFloor * 10 + this.comboPoints; }
+  get score() { return this.maxFloor * 10 + this.comboPoints + this.summitBonus; }
 
   // ------------------------------------------------------------ input
   jumpPressed() {
@@ -112,11 +127,14 @@ export class Game {
       p.kick = null;
       this.ricochetFx(p.x - p.facing * PW / 2, p.y + 20, -p.facing);
     }
+    // running with a conveyor belt counts toward your jump speed
+    const under = p.ground ? this.tower.platform(p.standFloor) : null;
+    if (under && under.kind === 'conveyor') p.vx = clamp(p.vx + under.dir * T.BELT * 0.6, -T.RUN_MAX * 1.2, T.RUN_MAX * 1.2);
     const speed = Math.abs(p.vx);
-    const v = (T.JUMP_BASE + speed * T.JUMP_PER_SPEED) * this.stats.jump;
+    const v = (T.JUMP_BASE + speed * T.JUMP_PER_SPEED) * this.stats.jump * this.jumpScale;
     p.vy = v;
     p.ground = false; p.coyote = 0; p.buffer = 0;
-    p.spinning = v >= T.SPIN_AT * this.stats.jump;
+    p.spinning = v >= T.SPIN_AT * this.stats.jump * this.jumpScale;
     p.spin = 0;
     this.setAnim(p.spinning ? 'spin' : 'jump');
     const power = clamp((v - T.JUMP_BASE) / (T.RUN_MAX * T.JUMP_PER_SPEED), 0, 1);
@@ -125,6 +143,17 @@ export class Game {
   }
 
   setAnim(a) { if (this.p.anim !== a) { this.p.anim = a; this.p.animT = 0; } }
+
+  // geysers, jellyfish and springs throw you upward like a giant jump
+  launch(v, sound = 'jump') {
+    const p = this.p;
+    p.vy = v; p.ground = false; p.coyote = 0; p.buffer = 0;
+    p.spinning = v >= TUNING.SPIN_AT; p.spin = 0;
+    this.setAnim(p.spinning ? 'spin' : 'jump');
+    if (this.audio) sound === 'bounce' ? this.audio.sfx.wallBounce() : this.audio.sfx.jump(1);
+    this.dust(p.x, p.y, 10, 0.9);
+    this.events.push({ k: 'launch' });
+  }
 
   // ------------------------------------------------------------ update
   update(dt, input) {
@@ -144,10 +173,19 @@ export class Game {
       return;
     }
 
+    if (this.finished) {
+      // standing on the summit, celebrating
+      this.overT += dt; this.p.animT += dt;
+      this.setAnim('cheer');
+      if (Math.random() < dt * 6) this.confetti();
+      this.updatePlatforms(dt);
+      if (this.race) this.followLeader(dt, true);
+      return;
+    }
     if (this.over) {
       this.overT += dt;
       this.p.animT += dt;
-      this.p.vy = Math.max(-TUNING.MAX_FALL, this.p.vy - TUNING.GRAVITY * dt);
+      this.p.vy = Math.max(-TUNING.MAX_FALL, this.p.vy - TUNING.GRAVITY * this.grav * dt);
       this.p.y += this.p.vy * dt;
       this.p.spin += dt * 6;
       if (this.race) this.followLeader(dt);
@@ -155,6 +193,8 @@ export class Game {
     }
 
     this.time += dt;
+    this.updatePlatforms(dt);
+    this.updateWind(dt);
     this.step(dt, input);
     this.updateCamera(dt);
     this.updateCombo(dt);
@@ -179,12 +219,23 @@ export class Game {
       p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f;
     }
 
+    if (this.wind) {
+      p.vx = clamp(p.vx + this.wind * (p.ground ? T.WIND_GROUND : T.WIND_AIR) * dt, -runMax * 1.15, runMax * 1.15);
+    }
+    if (p.ground) {
+      const under = this.tower.platform(p.standFloor);
+      if (under && under.kind === 'cloud') p.x += under.dx;              // ride the cloud
+      if (under && under.kind === 'conveyor') p.x += under.dir * T.BELT * dt;
+      if (under && under.kind === 'geyser' && under.fx.erupt > 0.5) { this.launch(T.GEYSER); }
+    }
+
     if (p.ground && p.buffer > 0) this.doJump();
     p.buffer = Math.max(0, p.buffer - dt);
     p.coyote = Math.max(0, p.coyote - dt);
 
     const prevY = p.y;
-    p.vy = Math.max(-T.MAX_FALL, p.vy - T.GRAVITY * dt);
+    const maxFall = T.MAX_FALL * (this.grav < 1 ? 0.6 : 1);
+    p.vy = Math.max(-maxFall, p.vy - T.GRAVITY * this.grav * dt);
     p.x += p.vx * dt;
     p.y += p.vy * dt;
 
@@ -228,7 +279,7 @@ export class Game {
         const top = n * FLOOR_GAP;
         if (prevY >= top - 0.01 && p.y <= top) {
           const pl = this.tower.platform(n);
-          if (p.x + PW / 2 > pl.x0 && p.x - PW / 2 < pl.x1) { landed = pl; break; }
+          if (pl && p.x + PW / 2 > pl.x0 && p.x - PW / 2 < pl.x1) { landed = pl; break; }
         }
       }
     }
@@ -236,14 +287,15 @@ export class Game {
       const impact = -p.vy;
       p.y = landed.n * FLOOR_GAP;
       p.vy = 0;
-      if (!p.ground) this.land(landed, impact);
+      const wasAir = !p.ground;
       p.ground = true;
       p.standFloor = landed.n;
-      if (p.buffer > 0) this.doJump();
+      if (wasAir) this.land(landed, impact);
+      if (p.ground && p.buffer > 0 && !this.finished) this.doJump();
     } else if (p.ground) {
       // walked off an edge?
       const pl = this.tower.platform(p.standFloor);
-      if (p.x + PW / 2 <= pl.x0 || p.x - PW / 2 >= pl.x1 || p.y > pl.n * FLOOR_GAP + 1) {
+      if (!pl || p.x + PW / 2 <= pl.x0 || p.x - PW / 2 >= pl.x1 || p.y > pl.n * FLOOR_GAP + 1) {
         p.ground = false; p.coyote = T.COYOTE;
         this.setAnim('fall');
       }
@@ -252,7 +304,7 @@ export class Game {
     // animation state
     if (p.ground) {
       const pl = this.tower.platform(p.standFloor);
-      const nearEdge = Math.abs(p.vx) < 30 &&
+      const nearEdge = pl && Math.abs(p.vx) < 30 && pl.kind !== 'cloud' &&
         (p.x - pl.x0 < 4 || pl.x1 - p.x < 4) && !this.tower.isFullWidth(pl.n);
       if (p.anim === 'land' && p.animT < 0.14) { /* hold the squash */ }
       else if (nearEdge) this.setAnim('edge');
@@ -293,6 +345,91 @@ export class Game {
       this.endCombo();
     }
     this.lastLandFloor = pl.n;
+
+    const T = TUNING;
+    if (pl.kind === 'summit') { this.finish(); return; }
+    if (pl.kind === 'jelly') {
+      // jellyfish trampoline: bounce back up, higher if you were holding jump
+      pl.fx.squish = 1;
+      const v = clamp(impact * 0.8 + T.JELLY_MIN * 0.5, T.JELLY_MIN, T.JELLY_MAX) + (p.buffer > 0 ? 220 : 0);
+      this.launch(v, 'bounce');
+      this.popup('BOING!', p.x, p.y + 50, '#ff9ad5', 16, 0.6);
+    } else if (pl.kind === 'spring') {
+      pl.fx.squish = 1; pl.fx.spring = 1;
+      this.launch(T.SPRING, 'bounce');
+      this.popup('SPROING!', p.x, p.y + 50, '#ffd166', 16, 0.6);
+    } else if (pl.kind === 'geyser' && pl.fx.erupt > 0.5) {
+      this.launch(T.GEYSER);
+    }
+  }
+
+  // ------------------------------------------------------------ map twists
+  updatePlatforms(dt) {
+    const n0 = Math.max(1, Math.floor(this.camY / FLOOR_GAP) - 2);
+    const n1 = Math.ceil((this.camY + VIEW_H) / FLOOR_GAP) + 6;
+    const t = this.time;
+    for (let n = n0; n <= n1; n++) {
+      const pl = this.tower.platform(n);
+      if (!pl || !pl.fx) continue;
+      const fx = pl.fx;
+      fx.squish = Math.max(0, fx.squish - dt * 4);
+      fx.spring = Math.max(0, fx.spring - dt * 3);
+      if (pl.kind === 'geyser') {
+        // idle -> bubbling warning (0.8 s) -> eruption (0.6 s), same clock for every racer
+        const cyc = (t + pl.phase) % pl.period;
+        const eruptAt = pl.period - 0.6, warnAt = eruptAt - 0.8;
+        fx.warn = cyc >= warnAt && cyc < eruptAt ? (cyc - warnAt) / 0.8 : 0;
+        fx.erupt = cyc >= eruptAt ? 1 : Math.max(0, fx.erupt - dt * 3);
+      } else if (pl.kind === 'cloud') {
+        const w = pl.x1 - pl.x0;
+        const x = Math.round((pl.bx + pl.amp * Math.sin(t * Math.PI * 2 / pl.period + pl.phase)) * 10) / 10;
+        pl.dx = pl.lastT === undefined ? 0 : x - pl.x0;
+        pl.lastT = t;
+        pl.x0 = x; pl.x1 = x + w;
+      }
+    }
+  }
+
+  // Cloud Carnival gusts: on a fixed schedule from the seed, with a warning
+  updateWind(dt) {
+    if (!this.map.mech.wind) return;
+    const t = this.time, every = 9, first = 6, dur = 2.6;
+    this.wind = 0; this.windWarn = 0;
+    const k0 = Math.max(0, Math.floor((t - first) / every));
+    for (let k = k0 - 1; k <= k0 + 1; k++) {
+      if (k < 0) continue;
+      const start = first + k * every + hash01(this.seed, k, 77) * 3;
+      const dir = hash01(this.seed, k, 78) < 0.5 ? -1 : 1;
+      if (t >= start - 1.2 && t < start) { this.windWarn = 1; this.windDir = dir; }
+      if (t >= start && t < start + dur) {
+        const e = Math.min(1, (t - start) / 0.4, (start + dur - t) / 0.4);
+        this.wind = dir * e; this.windDir = dir;
+        if (Math.random() < dt * 30) this.particles.push({ x: dir > 0 ? WALL_W : VIEW_W - WALL_W,
+          y: this.camY + Math.random() * VIEW_H, vx: dir * (500 + Math.random() * 300), vy: 0, g: 0,
+          life: 0.9, t: 0, r: 2, streak: true });
+      }
+    }
+  }
+
+  finish() {
+    const p = this.p;
+    this.endCombo();
+    this.finished = true; this.over = true;
+    p.vx = 0; p.vy = 0; p.spinning = false; p.spin = 0;
+    this.summitTime = this.time;
+    this.summitBonus = 2000 + Math.max(0, Math.round((300 - this.time) * 10));
+    this.setAnim('cheer');
+    this.audio && this.audio.sfx.praise(9);
+    this.popup('SUMMIT!', VIEW_W / 2, null, '#fff', 56, 2.4, 9);
+    for (let i = 0; i < 40; i++) this.confetti();
+    this.events.push({ k: 'summit', time: this.time });
+  }
+
+  confetti() {
+    const cols = ['#ffb43d', '#8fe6ff', '#7be08a', '#ff7eb6', '#ffe45c', '#b48cff'];
+    this.particles.push({ x: WALL_W + Math.random() * (VIEW_W - 2 * WALL_W), y: this.camY + VIEW_H + 10,
+      vx: (Math.random() - 0.5) * 80, vy: -40 - Math.random() * 60, g: 30, life: 3 + Math.random() * 2, t: 0,
+      r: 3 + Math.random() * 3, confetti: cols[(Math.random() * cols.length) | 0], spinR: Math.random() * 6 });
   }
 
   updateCombo(dt) {
@@ -343,6 +480,8 @@ export class Game {
     // climb above the push line and the camera races to keep you on screen
     const pushLine = this.camY + VIEW_H * (1 - T.PUSH_ZONE);
     if (p.y > pushLine) this.camY += (p.y - pushLine) * Math.min(1, dt * 8);
+    // the camera stops at the top so the summit and roof stay in view
+    if (this.tower.summit !== null) this.camY = Math.min(this.camY, this.tower.summit * FLOOR_GAP - VIEW_H * 0.42);
   }
 
   fall() {
@@ -371,7 +510,8 @@ export class Game {
     }
   }
 
-  followLeader(dt) {
+  followLeader(dt, stay = false) {
+    if (stay) return;
     let lead = null;
     for (const [id, r] of this.race.players) {
       if (r.out || !r.pos) continue;
@@ -388,7 +528,7 @@ export class Game {
     const p = this.p;
     return { x: Math.round(p.x), y: Math.round(p.y), a: p.anim, f: p.facing,
              sp: +p.spin.toFixed(2), fl: this.maxFloor, sc: this.score,
-             cb: this.combo.active ? this.combo.floors : 0, cam: Math.round(this.camY) };
+             cb: this.combo.active ? this.combo.floors : 0, cam: Math.round(this.camY), sm: this.finished ? 1 : 0 };
   }
 
   // ------------------------------------------------------------ juice
@@ -417,7 +557,14 @@ export class Game {
     }
   }
   updateParticles(dt) {
-    for (const q of this.particles) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vy -= 500 * dt; q.vx *= 0.96; }
+    for (const q of this.particles) {
+      q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vy -= (q.g ?? 500) * dt;
+      if (!q.streak) q.vx *= 0.96;
+    }
+    if (this.grav < 1 && !this.over && Math.random() < dt * 3) {
+      this.particles.push({ x: this.p.x + this.p.facing * 10, y: this.p.y + 40, vx: (Math.random() - .5) * 20,
+        vy: 60, g: -40, life: 1.4, t: 0, r: 2.5 + Math.random() * 2, bubble: true });
+    }
     this.particles = this.particles.filter(q => q.t < q.life);
   }
 
@@ -431,7 +578,7 @@ export class Game {
 
     const n0 = Math.max(0, Math.floor(cam / FLOOR_GAP) - 1);
     const n1 = Math.ceil((cam + VIEW_H + PLAT_H) / FLOOR_GAP) + 1;
-    for (let n = n0; n <= n1; n++) drawPlatform(ctx, this.tower.platform(n), cam, t);
+    for (let n = n0; n <= n1; n++) { const pl = this.tower.platform(n); if (pl) drawPlatform(ctx, pl, cam, t); }
 
     if (this.race) this.drawRemotes(ctx, cam);
     this.drawParticles(ctx, cam);
@@ -490,7 +637,16 @@ export class Game {
       const a = 1 - q.t / q.life;
       const y = this.sy(q.y, cam);
       ctx.globalAlpha = a;
-      if (q.star) {
+      if (q.streak) {
+        ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(q.x, y); ctx.lineTo(q.x - Math.sign(q.vx) * 34, y); ctx.stroke(); ctx.lineCap = 'butt';
+      } else if (q.confetti) {
+        ctx.save(); ctx.translate(q.x, y); ctx.rotate(q.t * q.spinR);
+        ctx.fillStyle = q.confetti; ctx.fillRect(-q.r, -q.r * 0.5, q.r * 2, q.r); ctx.restore();
+      } else if (q.bubble) {
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(q.x, y, q.r, 0, Math.PI * 2); ctx.stroke();
+      } else if (q.star) {
         ctx.fillStyle = '#ffe45c'; ctx.strokeStyle = '#1f1612'; ctx.lineWidth = 1.5;
         star(ctx, q.x, y, q.r * 1.3); ctx.fill(); ctx.stroke();
       } else {

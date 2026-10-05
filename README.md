@@ -20,6 +20,16 @@ Live: https://capy.apforge.net/tower/
 - **Art:** the art is cel-shaded, drawn as outlined cartoons in the Capy Leap style. There are
   7 tower themes, each 50 floors tall: Riverbank Keep, Bamboo Dojo, Frost Spire, Lava Forge, Neon Night,
   Gingersnap Hall and Starlight Top. Arched windows look out on parallax scenery that runs from day to space.
+- **Maps:** 5 towers. **Capy Tower** is the classic endless climb. Four summit towers each have their own
+  world and twist, and you reach the top at floor 200:
+  - **Sakura Springs:** steam geysers launch you up.
+  - **Coral Reef Spire:** floaty underwater physics and bouncy jellyfish.
+  - **Cloud Carnival:** drifting cloud platforms and wind gusts.
+  - **Clockwork Toybox:** conveyor belts and springs.
+
+  Online, the host picks the tower. On a summit tower the first capy to the top wins.
+- **Endings:** reaching a summit plays that character's ending video (`endings/<id>.mp4`). To make them with
+  Grok Imagine, see [`docs/ENDINGS-GROK.md`](docs/ENDINGS-GROK.md); the reference art is in `docs/endings-ref/`.
 - **Characters:** 5 playable capybaras (CAPY, YORU, TICO, PIKO, CHANG), each with small stat differences.
 - **Soundtrack:** procedural boom-bap hip hop in Web Audio, 5 tracks, with a new beat for each theme.
   To add your own MP3s, see `music/README.md`.

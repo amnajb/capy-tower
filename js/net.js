@@ -77,6 +77,8 @@ export class Net {
   leave() { this.send({ t: 'leave' }); this.room = null; }
   event(k, d) { this.send({ t: 'ev', k, d }); }
   dead(d) { this.send({ t: 'dead', ...d }); }
+  summit(d) { this.send({ t: 'summit', ...d }); }
+  map(id) { this.send({ t: 'map', map: id }); }
   disconnect() { if (this.ws) this.ws.close(); }
 
   // throttled position stream (~15 Hz)

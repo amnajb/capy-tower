@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- Character reference renders for the Grok Imagine ending prompts:
+     ?char=capy&pose=idle|cheer|both&s=1024&bg=flat|clear -->
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { drawCharacter } from '../js/characters.js';
+const q = new URLSearchParams(location.search);
+const id = q.get('char') || 'capy', pose = q.get('pose') || 'both', S = +(q.get('s') || 1024);
+const both = pose === 'both';
+const c = document.getElementById('c'); c.width = both ? S * 2 : S; c.height = S;
+const g = c.getContext('2d');
+if (q.get('bg') !== 'clear') { g.fillStyle = '#f4ead6'; g.fillRect(0, 0, c.width, c.height); }
+const poses = both ? ['idle', 'cheer'] : [pose];
+poses.forEach((p, i) => {
+  g.save();
+  g.translate(S * i + S / 2, S * 0.84);
+  const k = S / 112;                      // character is ~52-66 px tall (more with a cheer hop) at scale 1
+  g.scale(k, k);
+  if (q.get('bg') !== 'clear') {
+    g.fillStyle = 'rgba(31,22,18,.16)'; g.beginPath(); g.ellipse(0, 1, 20, 3.5, 0, 0, Math.PI * 2); g.fill();
+  }
+  drawCharacter(g, id, { anim: p, t: p === 'cheer' ? 0.35 : 0.9, facing: 1, spin: 0, squash: 0, vx: 0, vy: 0, blink: false });
+  g.restore();
+});
+document.title = 'ready';
+</script></body></html>

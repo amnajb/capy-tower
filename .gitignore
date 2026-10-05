@@ -2,3 +2,6 @@
 Thumbs.db
 *.log
 deploy/deploy.conf
+
+# Capy Leap portrait art comes from the private capyleap repo: keep it local
+docs/endings-ref/*-portrait.jpg

@@ -6,6 +6,8 @@ import { Game } from './game.js';
 import { drawHud } from './hud.js';
 import { createAudio } from './audio.js';
 import { Net } from './net.js';
+import * as world from './world.js';
+import { MAPS, mapById } from './maps.js';
 import { installZoomGuards, haptic, keepAwake, registerPWA, onInstallAvailable, canInstall,
          promptInstall, isStandalone } from './mobile.js';
 
@@ -80,7 +82,23 @@ let game = null;
 let mode = 'solo';                           // solo | race
 let paused = false;
 let charIdx = Math.max(0, CHARACTERS.findIndex(c => c.id === store.get('char', 'capy')));
-let records = store.get('records', { score: 0, floor: 0, combo: 0 });
+// records per map (the v2 single 'records' entry becomes the classic tower's)
+const EMPTY_REC = { score: 0, floor: 0, combo: 0, time: 0 };
+function recordsFor(id) {
+  let r = store.get('records.' + id, null);
+  if (!r && id === 'classic') r = store.get('records', null);
+  return { ...EMPTY_REC, ...(r || {}) };
+}
+let records = recordsFor('classic');
+let mapIdx = Math.max(0, MAPS.findIndex(m => m.id === store.get('map', 'classic')));
+
+// the world renderer holds one map at a time; switch it before drawing
+let worldMap = null;
+function useMap(m) {
+  if (worldMap === m) return;
+  worldMap = m;
+  if (world.setWorldMap) world.setWorldMap({ themes: m.themes, span: m.span, summit: m.summit });
+}
 let lastTheme = -1;
 const net = new Net();
 let race = null;                             // { players: Map, countdown, meIdx }
@@ -91,6 +109,7 @@ function show(name, push = true) {
   $$('.screen').forEach(s => s.classList.toggle('on', s.id === 's-' + name));
   if (name === 'title') renderRecords();
   if (name === 'select') renderRoster();
+  if (name === 'maps') renderMaps();
   if (name === 'online') { $('#name').value = playerName(); $('#online-status').textContent = net.error || ''; }
   const first = $(`#s-${name} .btn.big`) || $(`#s-${name} .btn`);
   if (first && name !== 'online') setTimeout(() => first.focus({ preventScroll: true }), 0);
@@ -157,7 +176,7 @@ function pickChar(i, quiet) {
 function confirmChar() {
   ensureAudio(); audio && audio.sfx.confirm();
   store.set('char', CHARACTERS[charIdx].id);
-  if (mode === 'solo') startSolo();
+  if (mode === 'solo') show('maps');
   else if (net.room) { net.hello(playerName(), CHARACTERS[charIdx].id); show('lobby'); renderLobby(); }
   else {
     show('online');
@@ -173,21 +192,110 @@ $('#select-go').addEventListener('click', confirmChar);
 // ---------------------------------------------------------------- solo
 function startSolo() {
   mode = 'solo';
-  game = new Game({ seed: (Math.random() * 2147483647) | 0, char: CHARACTERS[charIdx].id, audio });
+  const map = MAPS[mapIdx];
+  game = new Game({ seed: (Math.random() * 2147483647) | 0, char: CHARACTERS[charIdx].id, audio, map });
   paused = false; lastTheme = -1;
+  startMapMusic(map);
   show('play');
+}
+function startMapMusic(map) {
+  if (audio && audio.ctx.state === 'suspended' && !document.hidden) audio.ctx.resume();
+  if (audio && audio.music.play && audio.music.mode !== 'mp3') { try { audio.music.play(map.track); } catch (e) {} }
+}
+
+// ---------------------------------------------------------------- map select
+const mapCanvases = [];
+function renderMaps() {
+  const box = $('#maplist');
+  if (!box.children.length) {
+    MAPS.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.className = 'mapcard';
+      b.style.setProperty('--mc', m.color);
+      b.innerHTML = `<canvas width="132" height="150"></canvas><div><em>${m.tag}</em><b>${m.name}</b>` +
+        `<p>${m.twist}</p><small></small></div>`;
+      b.addEventListener('click', () => { pickMap(i); confirmMap(); });
+      b.addEventListener('focus', () => pickMap(i, true));
+      box.appendChild(b);
+      mapCanvases.push(b.querySelector('canvas'));
+    });
+  }
+  $$('#maplist .mapcard').forEach((b, i) => {
+    const m = MAPS[i], r = recordsFor(m.id);
+    b.querySelector('small').textContent = m.summit
+      ? (r.time ? `★ summit in ${fmtTime(r.time)} · best ${r.score}` : r.floor ? `best floor ${r.floor} / ${m.summit}` : `summit at floor ${m.summit}`)
+      : (r.score ? `best ${r.score} · floor ${r.floor}` : 'endless');
+  });
+  pickMap(mapIdx, true);
+}
+function pickMap(i, quiet) {
+  mapIdx = (i + MAPS.length) % MAPS.length;
+  $$('#maplist .mapcard').forEach((b, j) => b.classList.toggle('sel', j === mapIdx));
+  if (!quiet) audio && audio.sfx.select();
+}
+function confirmMap() {
+  ensureAudio(); audio && audio.sfx.confirm();
+  store.set('map', MAPS[mapIdx].id);
+  startSolo();
+}
+$('#maps-go').addEventListener('click', confirmMap);
+const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ---------------------------------------------------------------- endings
+// Reaching a summit plays the character's ending video (endings/<id>.mp4,
+// made with Grok Imagine: docs/ENDINGS-GROK.md). No video yet -> the in-game
+// summit celebration is the ending.
+const endingAvail = {};
+async function hasEnding(id) {
+  if (!(id in endingAvail)) {
+    try { const r = await fetch(`endings/${id}.mp4`, { method: 'HEAD' }); endingAvail[id] = r.ok && /video/.test(r.headers.get('content-type') || ''); }
+    catch (e) { endingAvail[id] = false; }
+  }
+  return endingAvail[id];
+}
+async function playEnding(charId, map) {
+  const c = CHARACTERS.find(x => x.id === charId) || CHARACTERS[0];
+  const title = `${c.name} conquered ${map.name}!`;
+  if (!(await hasEnding(charId))) return;
+  const v = $('#ending-video');
+  $('#ending-title').textContent = title;
+  v.poster = `endings/${charId}.jpg`;
+  v.src = `endings/${charId}.mp4`;
+  // the videos ship without audio (docs/ENDINGS-GROK.md): the soundtrack keeps
+  // playing underneath, with a victory sting on top
+  audio && audio.sfx.praise(9);
+  audio && audio.music.setIntensity(1);
+  show('ending');
+  await new Promise(resolve => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; v.pause(); v.removeAttribute('src'); v.load(); resolve(); };
+    v.onended = finish; v.onerror = finish;
+    $('#ending-skip').onclick = finish;
+    playEnding.skip = finish;
+    v.muted = true;
+    v.play().catch(finish);
+  });
+  playEnding.skip = null;
 }
 $('#again').addEventListener('click', () => { ensureAudio(); startSolo(); });
 
 function soloOver() {
-  const g = game;
-  const nb = { score: g.score > records.score, floor: g.maxFloor > records.floor, combo: g.bestCombo > records.combo };
-  records = { score: Math.max(records.score, g.score), floor: Math.max(records.floor, g.maxFloor),
-              combo: Math.max(records.combo, g.bestCombo) };
-  store.set('records', records);
+  const g = game, id = g.map.id;
+  const rec = recordsFor(id);
+  const t = g.finished ? g.summitTime : 0;
+  const nb = { score: g.score > rec.score, floor: g.maxFloor > rec.floor, combo: g.bestCombo > rec.combo,
+               time: !!t && (!rec.time || t < rec.time) };
+  const next = { score: Math.max(rec.score, g.score), floor: Math.max(rec.floor, g.maxFloor),
+                 combo: Math.max(rec.combo, g.bestCombo), time: nb.time ? t : rec.time };
+  store.set('records.' + id, next);
+  if (id === 'classic') records = next;
   const row = (k, v, best, isNew) => `<div class="sc"><i>${k}</i><b>${v}</b>${isNew ? '<em>NEW BEST!</em>' : `<small>best ${best}</small>`}</div>`;
-  $('#scorecard').innerHTML = row('SCORE', g.score, records.score, nb.score) +
-    row('FLOOR', g.maxFloor, records.floor, nb.floor) + row('BEST COMBO', g.bestCombo, records.combo, nb.combo);
+  $('.big-over').textContent = g.finished ? 'Summit!' : 'Game Over';
+  $('.big-over').classList.toggle('won', g.finished);
+  $('#scorecard').innerHTML = `<div class="mapline">${g.map.name}</div>` +
+    (g.finished ? row('TIME', fmtTime(t), next.time ? fmtTime(next.time) : '-', nb.time) : '') +
+    row('SCORE', g.score, next.score, nb.score) +
+    row('FLOOR', g.maxFloor, next.floor, nb.floor) + row('BEST COMBO', g.bestCombo, next.combo, nb.combo);
   show('over');
 }
 
@@ -257,17 +365,36 @@ net.on('sync', m => {
 net.on('out', m => {
   if (!race) return;
   const r = race.players.get(m.id);
-  if (r) { r.out = true; r.floor = m.result.floor; toast(`${r.name} fell off on floor ${m.result.floor}!`, 1600); }
+  if (r) {
+    r.out = true; r.floor = m.result.floor; r.summit = m.result.summit;
+    toast(m.result.summit ? `${r.name} reached the summit!` : `${r.name} fell off on floor ${m.result.floor}!`, 1800);
+  }
 });
 net.on('results', m => {
-  race && (race.results = m.order);
+  if (!race) return;
+  race.results = m.order;
+  // mid-summit-celebration / ending video: show results once it's over
+  if (race.inEnding) { race.pendingResults = m.order; return; }
   if (screen === 'play' && game && game.over) setTimeout(() => showResults(m.order), 900);
-  else if (race) race.pendingResults = m.order;
+  else race.pendingResults = m.order;
 });
 
+$('#map-prev').addEventListener('click', () => lobbyMap(-1));
+$('#map-next').addEventListener('click', () => lobbyMap(1));
+function lobbyMap(d) {
+  if (!net.room || !net.isHost) return;
+  const i = MAPS.findIndex(m => m.id === (net.room.map || 'classic'));
+  net.map(MAPS[(i + d + MAPS.length) % MAPS.length].id);
+  audio && audio.sfx.select();
+}
 function renderLobby() {
   const r = net.room;
   if (!r) return;
+  const lm = mapById(r.map);
+  $('#lobby-map-name').textContent = lm.name;
+  $('#lobby-map-tag').textContent = lm.summit ? `${lm.tag} · FIRST TO FLOOR ${lm.summit} WINS` : `${lm.tag} · LAST ONE STANDING`;
+  $('#map-pick').classList.toggle('guest', !net.isHost);
+  $('#map-pick').style.borderLeft = `10px solid ${lm.color}`;
   $('#room-code').textContent = r.code;
   $('#lobby-sub').textContent = r.pub ? 'Public room · friends can join with the code' : 'Private room · share the code';
   const slots = $('#slots');
@@ -306,21 +433,28 @@ function startRace(m) {
   });
   race = { players, countdown: m.countdown / 1000, meIdx: m.players.findIndex(p => p.id === net.id) };
   mode = 'race';
-  game = new Game({ seed: m.seed, char: CHARACTERS[charIdx].id, audio, name: playerName(),
+  const map = mapById(m.map);
+  game = new Game({ seed: m.seed, char: CHARACTERS[charIdx].id, audio, name: playerName(), map,
                     race: { net, players, countdown: race.countdown } });
   paused = false; lastTheme = -1;
+  startMapMusic(map);
   show('play');
 }
 
-function showResults(order) {
+async function showResults(order) {
   race = null;
+  if (order[0] && order[0].id === net.id && order.length > 1 && !showResults.busy && await hasEnding('group')) {
+    showResults.busy = true;
+    await playEnding('group', { name: 'the race' });
+    showResults.busy = false;
+  }
   const pod = $('#podium');
   pod.innerHTML = '';
   order.forEach((p, i) => {
     const d = document.createElement('div');
     d.className = 'place p' + (i + 1) + (p.id === net.id ? ' me' : '');
     d.innerHTML = `<i>${['1ST', '2ND', '3RD', '4TH'][i]}</i><canvas width="120" height="130"></canvas>` +
-      `<b>${esc(p.name)}</b><span>floor ${p.floor} · ${p.score} pts</span>`;
+      `<b>${esc(p.name)}</b><span>${p.summit ? `★ summit ${fmtTime(p.time / 1000)}` : `floor ${p.floor}`} · ${p.score} pts</span>`;
     d.dataset.char = p.char; d.dataset.win = i === 0 ? '1' : '';
     pod.appendChild(d);
   });
@@ -351,6 +485,13 @@ window.addEventListener('keydown', e => {
     if (e.code === 'ArrowRight' || e.code === 'KeyD') { pickChar(charIdx + 1); focusCard(); e.preventDefault(); }
     if (e.code === 'Enter' && document.activeElement && document.activeElement.classList.contains('card')) { confirmChar(); e.preventDefault(); }
     if (e.code === 'Escape') back();
+  } else if (screen === 'maps') {
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') { pickMap(mapIdx - 1); focusMap(); e.preventDefault(); }
+    if (e.code === 'ArrowDown' || e.code === 'KeyS') { pickMap(mapIdx + 1); focusMap(); e.preventDefault(); }
+    if (e.code === 'Enter' && document.activeElement && document.activeElement.classList.contains('mapcard')) { confirmMap(); e.preventDefault(); }
+    if (e.code === 'Escape') back();
+  } else if (screen === 'ending') {
+    if ((e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') && playEnding.skip) { e.preventDefault(); playEnding.skip(); }
   } else if (screen === 'over') {
     if (e.code === 'Space' || e.code === 'KeyR') { e.preventDefault(); startSolo(); }
   } else if (e.code === 'Escape' && screen !== 'title' && screen !== 'lobby') back();
@@ -359,6 +500,7 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { const k = KEYS[e.code]; if (k) input[k] = false; });
 window.addEventListener('blur', () => { input.left = input.right = input.jump = false; });
+function focusMap() { const c = $$('#maplist .mapcard')[mapIdx]; c && c.focus({ preventScroll: true }); }
 function focusCard() { const c = $$('#roster .card')[charIdx]; c && c.focus({ preventScroll: true }); }
 document.addEventListener('pointerdown', () => ensureAudio(), { once: true });
 // iOS only unlocks Web Audio inside touchend on older versions
@@ -471,7 +613,8 @@ function frame(now) {
   } else acc = 0;
 
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  if (game && (screen === 'play' || screen === 'over' || screen === 'results')) {
+  if (game && (screen === 'play' || screen === 'over' || screen === 'results' || screen === 'ending')) {
+    useMap(game.map);
     game.draw(ctx);
     drawHud(ctx, game, hudOpts());
     if (paused) {
@@ -488,6 +631,7 @@ function frame(now) {
 let attract = null;
 function drawAttract(t) {
   if (!attract) attract = new Game({ seed: 1234, char: 'capy', audio: null });
+  useMap(attract.map);
   attract.camY = t * 40 % 20000;
   attract.p.y = -9999;                       // keep the demo capy out of shot
   attract.draw(ctx);
@@ -509,6 +653,12 @@ function drawMenuArt(t) {
       const c2 = cv.getContext('2d');
       c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, cv.width, cv.height);
       drawPortrait(c2, CHARACTERS[i].id, cv.width, cv.height, i === charIdx ? t : 0);
+    });
+  } else if (screen === 'maps') {
+    mapCanvases.forEach((cv, i) => {
+      const c2 = cv.getContext('2d');
+      c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, cv.width, cv.height);
+      if (world.drawMapPreview) world.drawMapPreview(c2, MAPS[i].themes, cv.width, cv.height, i === mapIdx ? t : 0);
     });
   } else if (screen === 'lobby' || screen === 'results') {
     $$(`#s-${screen} [data-char] canvas`).forEach(cv => {
@@ -544,14 +694,34 @@ function afterStep() {
       if (mode === 'solo') setTimeout(() => { if (game === g) soloOver(); }, 1300);
       else net.dead({ floor: g.maxFloor, score: g.score, combo: g.bestCombo });
     }
+    if (ev.k === 'summit') {
+      haptic([60, 60, 60, 60, 160]);
+      if (mode === 'race') {
+        net.state(0, g.netState());
+        net.summit({ floor: g.maxFloor, score: g.score, combo: g.bestCombo });
+        race.inEnding = true;
+      }
+      const r = race;
+      setTimeout(async () => {
+        if (game !== g) return;
+        await playEnding(g.char, g.map);
+        if (game !== g) return;
+        if (mode === 'solo') soloOver();
+        else if (r) {
+          r.inEnding = false;
+          if (r.pendingResults) { const o = r.pendingResults; r.pendingResults = null; showResults(o); }
+          else if (screen === 'ending') show('play', false);      // keep watching the others climb
+        }
+      }, 2600);
+    }
   }
   if (mode === 'race' && !g.over && g.countdown <= 0) net.state(performance.now(), g.netState());
-  if (mode === 'race' && g.over && race && race.pendingResults && g.overT > 1) {
+  if (mode === 'race' && g.over && race && !race.inEnding && race.pendingResults && g.overT > 1) {
     const o = race.pendingResults; race.pendingResults = null; showResults(o);
   }
   // soundtrack follows the tower: new theme, new beat
   const th = themeIndexForFloor(g.maxFloor) % THEMES.length;
-  if (th !== lastTheme) {
+  if (g.map.id === 'classic' && th !== lastTheme) {
     if (lastTheme >= 0 && audio) { audio.music.next(); showTrack(); }
     lastTheme = th;
   }
@@ -566,7 +736,15 @@ function showTrack() {
 }
 
 // debug handle for headless tests
-window.__ct = { get game() { return game; }, get screen() { return screen; }, input, show, startSolo, net,
+window.__ct = {
+  // test helper: put the capy a few floors under the summit of a summit map
+  nearSummit(floors = 3) {
+    const g = game; if (!g || g.tower.summit === null) return false;
+    const n = g.tower.summit - floors, pl = g.tower.platform(n);
+    g.p.x = (pl.x0 + pl.x1) / 2; g.p.y = n * 84; g.p.vy = 0; g.p.ground = true; g.p.standFloor = n;
+    g.maxFloor = n; g.lastLandFloor = n; g.camY = n * 84 - 300; return true;
+  },
+  get game() { return game; }, get screen() { return screen; }, input, show, startSolo, net,
                 pick: i => pickChar(i, true) };
 
 show('title', false);
