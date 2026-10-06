@@ -8,7 +8,7 @@
 #  The game is static files (index.html, style.css, js/, music/), copied from
 #  the commit into DEST. The online race server (server/tower-server.js, no
 #  dependencies) is installed as the `capy-tower` systemd service on
-#  127.0.0.1:PORT. The arcade (capy-leap's installer) owns nginx and routes
+#  127.0.0.1:PORT. The arcade (amnajb/arcade, edge/install.sh) owns nginx and routes
 #  /tower/ -> DEST and /tower/ws -> PORT, so after the first install run the
 #  arcade installer once to add the routes and the picker card.
 #
@@ -88,4 +88,4 @@ git show HEAD:server/tower-server.js | ssh "${SSH_OPTS[@]}" "$HOST" "set -e
   grep -qs 'location = /tower/ws' /etc/nginx/sites-enabled/* && echo ROUTED || echo NOT_ROUTED"
 c_ok "capy-tower $COMMIT deployed"
 echo "If the output above ends in NOT_ROUTED, add the arcade routes once:"
-echo "    cd ~/capyleap-arcade && git pull && ./install.sh"
+echo "    cd ~/arcade && git pull && edge/install.sh"
