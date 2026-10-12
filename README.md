@@ -63,4 +63,4 @@ service on 127.0.0.1:8096. The arcade installer (capy-leap) routes `/tower/` and
 
 ## Controls
 
-← → / A D to run · Space / ↑ / W to jump · P to pause · M to mute · N for the next track · gamepad and touch are supported
+← → / A D to run · Space / ↑ / W to jump · P to pause · M to mute · N for the next track · touch is supported · controller: stick / ◀ ▶ run, A or ▲ jump, + pause, B back (buttons as printed on the pad; js/capy-pad.js, vendored from amnajb/arcade pad/)

@@ -27,7 +27,7 @@
     <div class="logo"><span>CAPY</span><span>TOWER</span></div>
     <canvas class="title-capy" id="title-capy" width="360" height="200"></canvas>
     <div class="menu">
-      <button class="btn big" data-go="solo">Solo Climb</button>
+      <button class="btn big" data-go="solo" data-pad-start>Solo Climb</button>
       <button class="btn big alt" data-go="online">Online Race <small>up to 4</small></button>
       <button class="btn" data-go="howto">How to Play</button>
       <button class="btn ghost" id="install" hidden>📲 Install the app</button>
@@ -41,9 +41,9 @@
     <div class="char-info" id="char-info"></div>
     <div class="row">
       <button class="btn ghost" data-back>Back</button>
-      <button class="btn big" id="select-go">Let's climb!</button>
+      <button class="btn big" id="select-go" data-pad-start>Let's climb!</button>
     </div>
-    <p class="hint">← → to choose · Enter to go</p>
+    <p class="hint" data-pad="◀ ▶ to choose · {0} to go · {1} back">← → to choose · Enter to go</p>
   </section>
 
   <section class="screen" id="s-maps">
@@ -51,9 +51,9 @@
     <div class="maplist" id="maplist"></div>
     <div class="row">
       <button class="btn ghost" data-back>Back</button>
-      <button class="btn big" id="maps-go">Climb!</button>
+      <button class="btn big" id="maps-go" data-pad-start>Climb!</button>
     </div>
-    <p class="hint">↑ ↓ to choose · Enter to climb</p>
+    <p class="hint" data-pad="▲ ▼ to choose · {0} to climb · {1} back">↑ ↓ to choose · Enter to climb</p>
   </section>
 
   <section class="screen" id="s-ending">
@@ -69,7 +69,7 @@
       <input id="name" maxlength="12" autocomplete="off" spellcheck="false">
     </label>
     <div class="menu">
-      <button class="btn big" id="quick">Quick Race</button>
+      <button class="btn big" id="quick" data-pad-default>Quick Race</button>
       <button class="btn alt" id="create">Create Private Room</button>
       <div class="join">
         <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
@@ -90,10 +90,10 @@
     </div>
     <div class="slots" id="slots"></div>
     <div class="row">
-      <button class="btn ghost" id="leave">Leave</button>
+      <button class="btn ghost" id="leave" data-pad-back>Leave</button>
       <button class="btn alt" id="change-char">Change Capy</button>
       <button class="btn alt" id="invite">Invite</button>
-      <button class="btn big" id="ready">Ready</button>
+      <button class="btn big" id="ready" data-pad-start>Ready</button>
     </div>
     <p class="status" id="lobby-status"></p>
   </section>
@@ -102,11 +102,11 @@
     <h2 class="heading big-over">Game Over</h2>
     <div class="scorecard" id="scorecard"></div>
     <div class="row">
-      <button class="btn ghost" data-go="title">Menu</button>
+      <button class="btn ghost" data-go="title" data-pad-back>Menu</button>
       <button class="btn alt" data-go="select">Change Capy</button>
-      <button class="btn big" id="again">Climb Again</button>
+      <button class="btn big" id="again" data-pad-start>Climb Again</button>
     </div>
-    <p class="hint">Space to climb again</p>
+    <p class="hint" data-pad="{0} to climb again · {1} menu">Space to climb again</p>
   </section>
 
   <section class="screen" id="s-results">
@@ -114,7 +114,7 @@
     <div class="podium" id="podium"></div>
     <div class="row">
       <button class="btn ghost" id="results-leave">Leave Room</button>
-      <button class="btn big" id="rematch">Back to Lobby</button>
+      <button class="btn big" id="rematch" data-pad-back data-pad-start>Back to Lobby</button>
     </div>
   </section>
 
@@ -127,6 +127,7 @@
       <li><b>Combos:</b> chain jumps of 2+ floors before the meter on the left runs out. Score = 10 × floor + combo².</li>
       <li>The tower starts moving at floor 5 and <b>speeds up every 30 s</b>. Drop off the bottom and it's over.</li>
       <li><b>P</b> pause · <b>M</b> mute · <b>N</b> next track</li>
+      <li class="pad-help"><b>Controller:</b> stick or <b>◀ ▶</b> run · <b data-l="0">A</b> or <b>▲</b> jump · <b data-l="9">+</b> pause · <b data-l="1">B</b> back</li>
       <li><b>On a phone:</b> slide your left thumb on the pad to run, tap JUMP with your right. Turn the phone sideways for side controls.</li>
     </ul>
     <button class="btn big" data-back>Got it</button>
@@ -151,6 +152,7 @@
   <div id="steer"><i class="l">◀</i><b class="knob"></b><i class="r">▶</i></div>
   <div id="jump-pad"><span>JUMP</span></div>
 </div>
+<script src="js/capy-pad.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

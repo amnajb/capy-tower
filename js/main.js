@@ -111,6 +111,7 @@ function show(name, push = true) {
   if (name === 'select') renderRoster();
   if (name === 'maps') renderMaps();
   if (name === 'online') { $('#name').value = playerName(); $('#online-status').textContent = net.error || ''; }
+  padHints();
   const first = $(`#s-${name} .btn.big`) || $(`#s-${name} .btn`);
   if (first && name !== 'online') setTimeout(() => first.focus({ preventScroll: true }), 0);
   $('#touch').classList.toggle('on', name === 'play' && isTouch);
@@ -118,6 +119,42 @@ function show(name, push = true) {
   resize();
 }
 function back() { show(history.pop() || 'title', false); }
+
+// ---------------------------------------------------------------- controller menus
+// js/capy-pad.js remaps every pad so buttons[0..3] are the PRINTED A/B/X/Y (the
+// house Onikuma Iruka has A on the right, B at the bottom). CapyPad.nav drives
+// the HTML screens: d-pad / stick move, A selects, B backs out
+// ([data-pad-back] or [data-back]), + presses [data-pad-start].
+const CP = window.CapyPad || null;
+const L = i => (CP ? CP.label(i) : ['A', 'B', 'X', 'Y'][i] || '+');
+let padUsed = false;                         // hints show controller buttons once a pad is used
+function padHints() {
+  $$('.hint[data-pad]').forEach(h => {
+    if (!h.dataset.kb) h.dataset.kb = h.textContent;
+    h.textContent = padUsed ? h.dataset.pad.replace(/\{(\d+)\}/g, (_, i) => L(+i)) : h.dataset.kb;
+  });
+  $$('[data-l]').forEach(b => { b.textContent = L(+b.dataset.l); });
+}
+let padRelease = false;                      // a button held as a menu appears (jump!) must not press it
+const padNav = CP ? CP.nav({
+  root: () => {
+    const el = screen === 'play' ? null : $('#s-' + screen);
+    if (!el) { padRelease = true; return null; }
+    if (padRelease) { const r = CP.read(); if (r && r.any) return null; padRelease = false; }
+    return el;
+  },
+  back: () => {
+    const root = $('#s-' + screen);
+    const b = root && (root.querySelector('[data-pad-back]') || root.querySelector('[data-back]'));
+    if (b) b.click();
+  },
+  start: () => { const root = $('#s-' + screen), b = root && root.querySelector('[data-pad-start]'); if (b) b.click(); },
+  onButton: k => {
+    if (!padUsed) { padUsed = true; padHints(); }
+    if (screen === 'ending' && (k === 'a' || k === 'b' || k === 'start')) { playEnding.skip && playEnding.skip(); return true; }
+    return false;
+  },
+}) : null;
 
 function playerName() {
   let n = store.get('name', '');
@@ -167,7 +204,7 @@ function renderRoster() {
 function pickChar(i, quiet) {
   charIdx = (i + CHARACTERS.length) % CHARACTERS.length;
   const c = CHARACTERS[charIdx];
-  $$('#roster .card').forEach((b, j) => b.classList.toggle('sel', j === charIdx));
+  $$('#roster .card').forEach((b, j) => { b.classList.toggle('sel', j === charIdx); b.toggleAttribute('data-pad-default', j === charIdx); });
   const bar = (label, v) => `<div class="stat"><i>${label}</i><u style="--v:${Math.round((v - 0.9) / 0.2 * 100)}%"></u></div>`;
   $('#char-info').innerHTML = `<h3>${c.name} <em>${c.tag}</em></h3><p>${c.blurb}</p>` +
     bar('SPEED', c.stats.speed) + bar('RUN-UP', c.stats.accel) + bar('JUMP', c.stats.jump);
@@ -230,7 +267,7 @@ function renderMaps() {
 }
 function pickMap(i, quiet) {
   mapIdx = (i + MAPS.length) % MAPS.length;
-  $$('#maplist .mapcard').forEach((b, j) => b.classList.toggle('sel', j === mapIdx));
+  $$('#maplist .mapcard').forEach((b, j) => { b.classList.toggle('sel', j === mapIdx); b.toggleAttribute('data-pad-default', j === mapIdx); });
   if (!quiet) audio && audio.sfx.select();
 }
 function confirmMap() {
@@ -578,7 +615,7 @@ installBtn.addEventListener('click', async () => {
 document.documentElement.classList.toggle('standalone', isStandalone());
 
 // gamepad: d-pad / left stick + A
-let padJump = false;
+let padJump = false, padPlus = false, padB = false;
 function pollPad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const gp = pads && Array.from(pads).find(Boolean);
@@ -587,10 +624,21 @@ function pollPad() {
   const j = !!(gp.buttons[0] && gp.buttons[0].pressed) || !!(gp.buttons[12] && gp.buttons[12].pressed);
   const st = { left: ax < -0.35 || !!(gp.buttons[14] && gp.buttons[14].pressed),
                right: ax > 0.35 || !!(gp.buttons[15] && gp.buttons[15].pressed), jump: j };
-  if (j && !padJump && screen === 'play' && game) {
-    if (game.over && mode === 'solo' && game.overT > 0.6) startSolo(); else game.jumpPressed();
+  const plus = !!(gp.buttons[9] && gp.buttons[9].pressed), bb = !!(gp.buttons[1] && gp.buttons[1].pressed);
+  if ((j || plus || bb || st.left || st.right) && !padUsed) { padUsed = true; padHints(); }
+  if (screen === 'play' && game) {
+    const soloLive = mode === 'solo' && !game.over;
+    if (paused && soloLive) {
+      if ((j && !padJump) || (plus && !padPlus)) { paused = false; audio && audio.sfx.select(); }
+      else if (bb && !padB) { paused = false; game = null; show('title'); }
+    } else {
+      if (j && !padJump) {
+        if (game.over && mode === 'solo' && game.overT > 0.6) startSolo(); else game.jumpPressed();
+      }
+      if (plus && !padPlus && soloLive) { paused = true; audio && audio.sfx.select(); }
+    }
   }
-  padJump = j;
+  padJump = j; padPlus = plus; padB = bb;
   return st;
 }
 
@@ -622,6 +670,9 @@ function frame(now) {
       ctx.font = '900 44px "Lilita One", system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 8;
       ctx.strokeStyle = '#1f1612'; ctx.strokeText('PAUSED', VIEW_W / 2, VIEW_H / 2);
       ctx.fillStyle = '#fff3da'; ctx.fillText('PAUSED', VIEW_W / 2, VIEW_H / 2);
+      ctx.font = '900 20px Nunito, system-ui'; ctx.lineWidth = 5;
+      const sub = padUsed ? `${L(9)} or ${L(0)} resume · ${L(1)} menu` : (isTouch ? 'tap JUMP to resume' : 'P to resume');
+      ctx.strokeText(sub, VIEW_W / 2, VIEW_H / 2 + 40); ctx.fillText(sub, VIEW_W / 2, VIEW_H / 2 + 40);
     }
   } else drawAttract(now / 1000);
   drawMenuArt(now / 1000);
